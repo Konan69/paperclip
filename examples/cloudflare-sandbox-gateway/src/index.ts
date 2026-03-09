@@ -1,11 +1,11 @@
 import {
   getSandbox,
   proxyToSandbox,
-  type Sandbox,
+  Sandbox as CloudflareSandbox,
 } from "@cloudflare/sandbox";
 
 type Env = {
-  Sandbox: DurableObjectNamespace<Sandbox>;
+  Sandbox: DurableObjectNamespace<PaperclipSandbox>;
   GATEWAY_TOKEN?: string;
 };
 
@@ -106,7 +106,8 @@ async function streamExec(
   });
 }
 
-export { Sandbox } from "@cloudflare/sandbox";
+export class Sandbox extends CloudflareSandbox {}
+export class PaperclipSandbox extends CloudflareSandbox {}
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -142,7 +143,6 @@ export default {
       if (Object.keys(sandboxEnv).length > 0) {
         await sandbox.setEnvVars(sandboxEnv);
       }
-      await sandbox.exec("mkdir -p /workspace");
       return json({ sandboxId });
     }
 

@@ -8,6 +8,8 @@ export const defaultCreateValues: CreateConfigValues = {
   sandboxNamespace: "paperclip",
   sandboxInstanceType: "standard",
   sandboxImage: "",
+  sandboxTemplate: "",
+  sandboxDomain: "",
   sandboxKeepAlive: true,
   cwd: "",
   instructionsFilePath: "",

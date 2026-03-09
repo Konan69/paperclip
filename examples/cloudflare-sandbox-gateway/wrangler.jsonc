@@ -4,7 +4,7 @@
   "compatibility_date": "2026-03-08",
   "containers": [
     {
-      "class_name": "Sandbox",
+      "class_name": "PaperclipSandbox",
       "image": "./Dockerfile",
       "instance_type": "standard-1",
       "max_instances": 10
@@ -14,14 +14,14 @@
     "bindings": [
       {
         "name": "Sandbox",
-        "class_name": "Sandbox"
+        "class_name": "PaperclipSandbox"
       }
     ]
   },
   "migrations": [
     {
-      "tag": "v1",
-      "new_sqlite_classes": ["Sandbox"]
+      "tag": "v2",
+      "new_sqlite_classes": ["PaperclipSandbox"]
     }
   ],
   "vars": {

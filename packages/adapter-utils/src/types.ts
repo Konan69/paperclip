@@ -220,6 +220,8 @@ export interface CreateConfigValues {
   sandboxNamespace: string;
   sandboxInstanceType: string;
   sandboxImage: string;
+  sandboxTemplate: string;
+  sandboxDomain: string;
   sandboxKeepAlive: boolean;
   cwd: string;
   instructionsFilePath?: string;

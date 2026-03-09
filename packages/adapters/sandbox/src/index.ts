@@ -17,11 +17,13 @@ Adapter: sandbox
 
 Core fields:
 - sandboxAgentType (string, required): claude_local | codex_local | opencode_local | pi_local | cursor
-- providerType (string, required): currently cloudflare
-- providerConfig.baseUrl (string, required): URL of the sandbox gateway
-- providerConfig.namespace (string, optional): Cloudflare sandbox namespace, default "paperclip"
-- providerConfig.instanceType (string, optional): Cloudflare instance type like lite | standard | heavy
-- providerConfig.image (string, optional): container image with the target CLI installed
+- providerType (string, required): cloudflare | e2b | opensandbox
+- providerConfig.baseUrl (string, Cloudflare only): URL of the sandbox gateway
+- providerConfig.namespace (string, Cloudflare only, optional): sandbox namespace, default "paperclip"
+- providerConfig.instanceType (string, Cloudflare only, optional): container size like lite | standard | heavy
+- providerConfig.template (string, E2B only): template or snapshot with the target CLI installed
+- providerConfig.domain (string, E2B/OpenSandbox optional): provider API domain override
+- providerConfig.image (string, Cloudflare/OpenSandbox): container image with the target CLI installed
 - keepAlive (boolean, optional): keep sandbox/session alive across heartbeats
 
 Inner agent fields mirror the matching local adapter where practical:

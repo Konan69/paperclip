@@ -2,11 +2,14 @@
 
 Paperclip now includes a `sandbox` adapter type for running CLI agents inside a remote sandbox instead of directly on the Paperclip host.
 
-## Current provider
+## Providers
 
 - `cloudflare`
+- `e2b`
+- `opensandbox`
 
-The current implementation uses a small gateway Worker that wraps Cloudflare Sandbox and exposes a stable HTTP API back to Paperclip.
+Cloudflare uses a small gateway Worker that wraps Cloudflare Sandbox and exposes a stable HTTP API back to Paperclip.
+E2B and OpenSandbox connect directly from the Paperclip server through their SDKs.
 
 Reference implementation:
 - [`/Users/Konan/Documents/personal/paperclip/examples/cloudflare-sandbox-gateway/README.md`](/Users/Konan/Documents/personal/paperclip/examples/cloudflare-sandbox-gateway/README.md)
@@ -17,10 +20,12 @@ Top-level fields:
 - `providerType`
 - `sandboxAgentType`
 - `keepAlive`
-- `providerConfig.baseUrl`
-- `providerConfig.namespace`
-- `providerConfig.instanceType`
-- `providerConfig.image`
+- `providerConfig.baseUrl` (Cloudflare)
+- `providerConfig.namespace` (Cloudflare)
+- `providerConfig.instanceType` (Cloudflare)
+- `providerConfig.template` (E2B)
+- `providerConfig.domain` (E2B/OpenSandbox)
+- `providerConfig.image` (Cloudflare/OpenSandbox)
 
 Inner CLI fields follow the same general shape as the local adapters:
 - `cwd`
@@ -34,6 +39,8 @@ Inner CLI fields follow the same general shape as the local adapters:
 
 Provider auth:
 - set `env.CLOUDFLARE_GATEWAY_TOKEN` to the same bearer token configured on the gateway
+- set `env.E2B_API_KEY` or `env.E2B_ACCESS_TOKEN` for E2B
+- set `env.OPEN_SANDBOX_API_KEY` for OpenSandbox
 
 ## Session behavior
 
@@ -42,4 +49,10 @@ Provider auth:
 
 ## UI behavior
 
-The board UI exposes `sandbox` as a normal adapter type in the existing agent create/edit form. The adapter-specific section collects the provider URL, namespace, instance type, image, keep-alive policy, and inner CLI runtime.
+The board UI exposes `sandbox` as a normal adapter type in the existing agent create/edit form.
+
+- Cloudflare shows gateway URL, namespace, instance type, and image
+- E2B shows template and optional API domain
+- OpenSandbox shows optional API domain and image
+
+The rest of the sandbox section stays shared: inner CLI runtime, keep-alive policy, instructions file, command/model/env controls, and environment testing.

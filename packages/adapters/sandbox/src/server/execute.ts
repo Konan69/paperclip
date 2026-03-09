@@ -26,8 +26,10 @@ import { parseCodexJsonl, isCodexUnknownSessionError } from "@paperclipai/adapte
 import { parseCursorJsonl, isCursorUnknownSessionError } from "@paperclipai/adapter-cursor-local/server";
 import { parseOpenCodeJsonl, isOpenCodeUnknownSessionError } from "@paperclipai/adapter-opencode-local/server";
 import { parsePiJsonl, isPiUnknownSessionError } from "@paperclipai/adapter-pi-local/server";
-import { createCloudflareSandboxProvider } from "@paperclipai/sandbox-provider-cloudflare";
 import { wrapSandboxStdoutLine } from "../shared/protocol.js";
+import { createSandboxProvider, setSandboxProviderFactoryForTests } from "./provider.js";
+
+export { setSandboxProviderFactoryForTests };
 
 type SandboxAgentType = "claude_local" | "codex_local" | "cursor" | "opencode_local" | "pi_local";
 
@@ -42,26 +44,6 @@ type ParsedRun = {
   };
   costUsd?: number | null;
 };
-
-let sandboxProviderFactoryForTests:
-  | ((config: Record<string, unknown>) => SandboxProvider)
-  | null = null;
-
-export function setSandboxProviderFactoryForTests(
-  factory: ((config: Record<string, unknown>) => SandboxProvider) | null,
-) {
-  sandboxProviderFactoryForTests = factory;
-}
-
-function createProvider(config: Record<string, unknown>): SandboxProvider {
-  if (sandboxProviderFactoryForTests) return sandboxProviderFactoryForTests(config);
-
-  const providerType = asString(config.providerType, "cloudflare").trim() || "cloudflare";
-  if (providerType !== "cloudflare") {
-    throw new Error(`Unsupported sandbox provider "${providerType}"`);
-  }
-  return createCloudflareSandboxProvider(config);
-}
 
 function readSandboxAgentType(config: Record<string, unknown>): SandboxAgentType {
   const value = asString(config.sandboxAgentType, "claude_local").trim() || "claude_local";
@@ -436,7 +418,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   const config = ctx.config;
   const agentType = readSandboxAgentType(config);
   const keepAlive = asBoolean(config.keepAlive, false);
-  const provider = createProvider(config);
+  const provider = createSandboxProvider(config);
   const runtimeSession = parseObject(ctx.runtime.sessionParams);
   const savedSandboxId = asString(runtimeSession.sandboxId, "").trim() || null;
   const cliSession = normalizeInnerSession(runtimeSession);

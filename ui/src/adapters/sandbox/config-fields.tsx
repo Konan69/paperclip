@@ -18,6 +18,12 @@ const sandboxAgentOptions = [
   { value: "cursor", label: "Cursor" },
 ] as const;
 
+const sandboxProviderOptions = [
+  { value: "cloudflare", label: "Cloudflare" },
+  { value: "e2b", label: "E2B" },
+  { value: "opensandbox", label: "OpenSandbox" },
+] as const;
+
 const instanceTypeOptions = ["lite", "standard", "heavy"] as const;
 
 export function SandboxConfigFields({
@@ -29,6 +35,12 @@ export function SandboxConfigFields({
   mark,
 }: AdapterConfigFieldsProps) {
   const providerConfig = (config.providerConfig ?? {}) as Record<string, unknown>;
+  const providerType = isCreate
+    ? values!.sandboxProviderType
+    : eff("adapterConfig", "providerType", String(config.providerType ?? "cloudflare"));
+
+  const updateProviderConfig = (next: Record<string, unknown>) =>
+    mark("adapterConfig", "providerConfig", { ...providerConfig, ...next });
 
   return (
     <>
@@ -58,9 +70,7 @@ export function SandboxConfigFields({
         <select
           className={inputClass}
           value={
-            isCreate
-              ? values!.sandboxProviderType
-              : eff("adapterConfig", "providerType", String(config.providerType ?? "cloudflare"))
+            providerType
           }
           onChange={(event) =>
             isCreate
@@ -68,85 +78,173 @@ export function SandboxConfigFields({
               : mark("adapterConfig", "providerType", event.target.value)
           }
         >
-          <option value="cloudflare">Cloudflare</option>
-        </select>
-      </Field>
-
-      <Field label="Gateway URL" hint={help.sandboxBaseUrl}>
-        <DraftInput
-          value={
-            isCreate
-              ? values!.sandboxBaseUrl
-              : String(providerConfig.baseUrl ?? "")
-          }
-          onCommit={(value) =>
-            isCreate
-              ? set!({ sandboxBaseUrl: value })
-              : mark("adapterConfig", "providerConfig", { ...providerConfig, baseUrl: value || undefined })
-          }
-          immediate
-          className={inputClass}
-          placeholder="https://paperclip-sandbox.<subdomain>.workers.dev"
-        />
-      </Field>
-
-      <Field label="Namespace" hint={help.sandboxNamespace}>
-        <DraftInput
-          value={
-            isCreate
-              ? values!.sandboxNamespace
-              : String(providerConfig.namespace ?? "paperclip")
-          }
-          onCommit={(value) =>
-            isCreate
-              ? set!({ sandboxNamespace: value })
-              : mark("adapterConfig", "providerConfig", { ...providerConfig, namespace: value || "paperclip" })
-          }
-          immediate
-          className={inputClass}
-          placeholder="paperclip"
-        />
-      </Field>
-
-      <Field label="Instance type" hint={help.sandboxInstanceType}>
-        <select
-          className={inputClass}
-          value={
-            isCreate
-              ? values!.sandboxInstanceType
-              : String(providerConfig.instanceType ?? "standard")
-          }
-          onChange={(event) =>
-            isCreate
-              ? set!({ sandboxInstanceType: event.target.value })
-              : mark("adapterConfig", "providerConfig", { ...providerConfig, instanceType: event.target.value })
-          }
-        >
-          {instanceTypeOptions.map((option) => (
-            <option key={option} value={option}>
-              {option}
+          {sandboxProviderOptions.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
             </option>
           ))}
         </select>
       </Field>
 
-      <Field label="Container image" hint={help.sandboxImage}>
-        <DraftInput
-          value={
-            isCreate
-              ? values!.sandboxImage
-              : String(providerConfig.image ?? "")
-          }
-          onCommit={(value) =>
-            isCreate
-              ? set!({ sandboxImage: value })
-              : mark("adapterConfig", "providerConfig", { ...providerConfig, image: value || undefined })
-          }
-          immediate
-          className={inputClass}
-          placeholder="ghcr.io/paperclipai/cloudflare-agent-sandbox:latest"
-        />
-      </Field>
+      {providerType === "cloudflare" && (
+        <>
+          <Field label="Gateway URL" hint={help.sandboxBaseUrl}>
+            <DraftInput
+              value={
+                isCreate
+                  ? values!.sandboxBaseUrl
+                  : String(providerConfig.baseUrl ?? "")
+              }
+              onCommit={(value) =>
+                isCreate
+                  ? set!({ sandboxBaseUrl: value })
+                  : updateProviderConfig({ baseUrl: value || undefined })
+              }
+              immediate
+              className={inputClass}
+              placeholder="https://paperclip-sandbox.<subdomain>.workers.dev"
+            />
+          </Field>
+
+          <Field label="Namespace" hint={help.sandboxNamespace}>
+            <DraftInput
+              value={
+                isCreate
+                  ? values!.sandboxNamespace
+                  : String(providerConfig.namespace ?? "paperclip")
+              }
+              onCommit={(value) =>
+                isCreate
+                  ? set!({ sandboxNamespace: value })
+                  : updateProviderConfig({ namespace: value || "paperclip" })
+              }
+              immediate
+              className={inputClass}
+              placeholder="paperclip"
+            />
+          </Field>
+
+          <Field label="Instance type" hint={help.sandboxInstanceType}>
+            <select
+              className={inputClass}
+              value={
+                isCreate
+                  ? values!.sandboxInstanceType
+                  : String(providerConfig.instanceType ?? "standard")
+              }
+              onChange={(event) =>
+                isCreate
+                  ? set!({ sandboxInstanceType: event.target.value })
+                  : updateProviderConfig({ instanceType: event.target.value })
+              }
+            >
+              {instanceTypeOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </Field>
+
+          <Field label="Container image" hint={help.sandboxImage}>
+            <DraftInput
+              value={
+                isCreate
+                  ? values!.sandboxImage
+                  : String(providerConfig.image ?? "")
+              }
+              onCommit={(value) =>
+                isCreate
+                  ? set!({ sandboxImage: value })
+                  : updateProviderConfig({ image: value || undefined })
+              }
+              immediate
+              className={inputClass}
+              placeholder="ghcr.io/paperclipai/cloudflare-agent-sandbox:latest"
+            />
+          </Field>
+        </>
+      )}
+
+      {providerType === "e2b" && (
+        <>
+          <Field label="Template" hint={help.sandboxTemplate}>
+            <DraftInput
+              value={
+                isCreate
+                  ? values!.sandboxTemplate
+                  : String(providerConfig.template ?? providerConfig.image ?? "")
+              }
+              onCommit={(value) =>
+                isCreate
+                  ? set!({ sandboxTemplate: value })
+                  : updateProviderConfig({ template: value || undefined })
+              }
+              immediate
+              className={inputClass}
+              placeholder="paperclip-codex or team/snapshot:latest"
+            />
+          </Field>
+
+          <Field label="API domain" hint={help.sandboxDomain}>
+            <DraftInput
+              value={
+                isCreate
+                  ? values!.sandboxDomain
+                  : String(providerConfig.domain ?? "")
+              }
+              onCommit={(value) =>
+                isCreate
+                  ? set!({ sandboxDomain: value })
+                  : updateProviderConfig({ domain: value || undefined })
+              }
+              immediate
+              className={inputClass}
+              placeholder="e2b.app"
+            />
+          </Field>
+        </>
+      )}
+
+      {providerType === "opensandbox" && (
+        <>
+          <Field label="API domain" hint={help.sandboxDomain}>
+            <DraftInput
+              value={
+                isCreate
+                  ? values!.sandboxDomain
+                  : String(providerConfig.domain ?? "")
+              }
+              onCommit={(value) =>
+                isCreate
+                  ? set!({ sandboxDomain: value })
+                  : updateProviderConfig({ domain: value || undefined })
+              }
+              immediate
+              className={inputClass}
+              placeholder="api.opensandbox.io"
+            />
+          </Field>
+
+          <Field label="Container image" hint={help.sandboxImage}>
+            <DraftInput
+              value={
+                isCreate
+                  ? values!.sandboxImage
+                  : String(providerConfig.image ?? "")
+              }
+              onCommit={(value) =>
+                isCreate
+                  ? set!({ sandboxImage: value })
+                  : updateProviderConfig({ image: value || undefined })
+              }
+              immediate
+              className={inputClass}
+              placeholder="ghcr.io/paperclipai/agent-sandbox:latest"
+            />
+          </Field>
+        </>
+      )}
 
       <ToggleField
         label="Keep sandbox alive"

@@ -1,7 +1,5 @@
-FROM docker.io/cloudflare/sandbox:latest
+FROM docker.io/cloudflare/sandbox:0.7.0
 
-RUN npm install -g @anthropic-ai/claude-code @openai/codex
+RUN npm install -g @anthropic-ai/claude-code @openai/codex opencode-ai
 
 WORKDIR /workspace
-
-EXPOSE 3000 8080

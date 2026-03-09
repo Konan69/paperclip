@@ -18,6 +18,10 @@ pnpm wrangler secret put GATEWAY_TOKEN
 pnpm deploy
 ```
 
+After the first deploy:
+- enable the `workers.dev` subdomain for the script if it is still disabled
+- wait 2-3 minutes before sending sandbox `exec` traffic so Cloudflare can provision the container application
+
 Then configure a Paperclip agent:
 - `adapterType`: `sandbox`
 - `providerType`: `cloudflare`
@@ -27,7 +31,8 @@ Then configure a Paperclip agent:
 
 ## Notes
 
-- The container image in this example installs `claude` and `codex`.
-- `opencode`, `pi`, and `cursor` need a custom image if you want them available in Cloudflare.
+- The container image in this example installs `claude`, `codex`, and `opencode`.
+- Keep the Docker base image version aligned with the installed `@cloudflare/sandbox` package version.
+- `pi` and `cursor` still need a custom image if you want them available in Cloudflare.
 - The current Paperclip adapter keeps state by sandbox ID when `keepAlive=true`.
 - Cloudflare image and instance type are primarily controlled by `wrangler.jsonc`. The gateway keeps the Paperclip API stable even if the underlying SDK evolves.

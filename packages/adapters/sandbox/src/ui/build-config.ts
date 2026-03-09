@@ -8,16 +8,33 @@ function parseCommaArgs(value: string): string[] {
 }
 
 export function buildSandboxConfig(values: CreateConfigValues): Record<string, unknown> {
-  const config: Record<string, unknown> = {
-    providerType: values.sandboxProviderType || "cloudflare",
-    sandboxAgentType: values.sandboxAgentType || "claude_local",
-    keepAlive: values.sandboxKeepAlive,
-    providerConfig: {
+  const providerType = values.sandboxProviderType || "cloudflare";
+  let providerConfig: Record<string, unknown>;
+
+  if (providerType === "e2b") {
+    providerConfig = {
+      template: values.sandboxTemplate || undefined,
+      domain: values.sandboxDomain || undefined,
+    };
+  } else if (providerType === "opensandbox") {
+    providerConfig = {
+      domain: values.sandboxDomain || undefined,
+      image: values.sandboxImage || undefined,
+    };
+  } else {
+    providerConfig = {
       baseUrl: values.sandboxBaseUrl,
       namespace: values.sandboxNamespace || "paperclip",
       instanceType: values.sandboxInstanceType || "standard",
       image: values.sandboxImage || undefined,
-    },
+    };
+  }
+
+  const config: Record<string, unknown> = {
+    providerType,
+    sandboxAgentType: values.sandboxAgentType || "claude_local",
+    keepAlive: values.sandboxKeepAlive,
+    providerConfig,
     timeoutSec: 0,
     graceSec: 20,
   };

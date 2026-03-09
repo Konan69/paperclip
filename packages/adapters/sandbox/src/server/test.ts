@@ -4,20 +4,27 @@ import type {
   AdapterEnvironmentTestResult,
 } from "@paperclipai/adapter-utils";
 import { asString, parseObject } from "@paperclipai/adapter-utils/server-utils";
-import { createCloudflareSandboxProvider } from "@paperclipai/sandbox-provider-cloudflare";
+import {
+  createSandboxProvider,
+  describeSandboxProvider,
+  readSandboxProviderType,
+} from "./provider.js";
 
 function buildChecks(config: Record<string, unknown>): AdapterEnvironmentCheck[] {
   const checks: AdapterEnvironmentCheck[] = [];
-  const providerType = asString(config.providerType, "cloudflare").trim() || "cloudflare";
   const providerConfig = parseObject(config.providerConfig);
+  const env = parseObject(config.env);
   const sandboxAgentType = asString(config.sandboxAgentType, "").trim();
+  let providerType: ReturnType<typeof readSandboxProviderType> | null = null;
 
-  if (providerType !== "cloudflare") {
+  try {
+    providerType = readSandboxProviderType(config);
+  } catch (err) {
     checks.push({
       code: "unsupported_provider",
       level: "error",
-      message: `Unsupported sandbox provider "${providerType}"`,
-      hint: "Use providerType=cloudflare for the current implementation.",
+      message: err instanceof Error ? err.message : String(err),
+      hint: "Use one of: cloudflare, e2b, opensandbox.",
     });
   }
 
@@ -30,12 +37,65 @@ function buildChecks(config: Record<string, unknown>): AdapterEnvironmentCheck[]
     });
   }
 
-  if (!asString(providerConfig.baseUrl, "").trim()) {
+  if (providerType === "cloudflare" && !asString(providerConfig.baseUrl, "").trim()) {
     checks.push({
       code: "missing_base_url",
       level: "error",
       message: "providerConfig.baseUrl is required",
       hint: "Point this at your deployed Cloudflare sandbox gateway worker.",
+    });
+  }
+
+  if (
+    providerType === "e2b" &&
+    !asString(providerConfig.template, "").trim() &&
+    !asString(providerConfig.image, "").trim()
+  ) {
+    checks.push({
+      code: "missing_template",
+      level: "error",
+      message: "providerConfig.template is required",
+      hint: "Set an E2B template or snapshot with the target CLI installed.",
+    });
+  }
+
+  if (
+    providerType === "e2b" &&
+    !asString(providerConfig.apiKey, "").trim() &&
+    !asString(providerConfig.accessToken, "").trim() &&
+    !Object.prototype.hasOwnProperty.call(env, "E2B_API_KEY") &&
+    !Object.prototype.hasOwnProperty.call(env, "E2B_ACCESS_TOKEN")
+  ) {
+    checks.push({
+      code: "missing_e2b_auth",
+      level: "error",
+      message: "E2B credentials are required",
+      hint: "Provide E2B_API_KEY or E2B_ACCESS_TOKEN in env bindings or providerConfig.",
+    });
+  }
+
+  if (
+    providerType === "opensandbox" &&
+    !asString(providerConfig.image, "").trim()
+  ) {
+    checks.push({
+      code: "missing_image",
+      level: "error",
+      message: "providerConfig.image is required",
+      hint: "Set the OpenSandbox container image with the target CLI installed.",
+    });
+  }
+
+  if (
+    providerType === "opensandbox" &&
+    !asString(providerConfig.apiKey, "").trim() &&
+    !Object.prototype.hasOwnProperty.call(env, "OPEN_SANDBOX_API_KEY")
+  ) {
+    checks.push({
+      code: "missing_opensandbox_auth",
+      level: "error",
+      message: "OpenSandbox credentials are required",
+      hint: "Provide OPEN_SANDBOX_API_KEY in env bindings or providerConfig.",
     });
   }
 
@@ -57,12 +117,15 @@ export async function testEnvironment(
   }
 
   try {
-    const provider = createCloudflareSandboxProvider(ctx.config);
+    const providerType = readSandboxProviderType(ctx.config);
+    const provider = createSandboxProvider(ctx.config);
     const result = await provider.testConnection(ctx.config);
     checks.push({
       code: result.ok ? "provider_ok" : "provider_warn",
       level: result.ok ? "info" : "warn",
-      message: result.ok ? "Cloudflare sandbox gateway reachable" : "Cloudflare sandbox gateway returned a warning",
+      message: result.ok
+        ? `${describeSandboxProvider(providerType)} reachable`
+        : `${describeSandboxProvider(providerType)} returned a warning`,
       detail: result.detail ?? null,
     });
   } catch (err) {

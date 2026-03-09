@@ -509,6 +509,8 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                     nextValues.sandboxAgentType = "claude_local";
                     nextValues.sandboxNamespace = "paperclip";
                     nextValues.sandboxInstanceType = "standard";
+                    nextValues.sandboxTemplate = "";
+                    nextValues.sandboxDomain = "";
                     nextValues.sandboxKeepAlive = true;
                   }
                   set!(nextValues);
