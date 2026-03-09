@@ -185,7 +185,7 @@ function parseAgentOutput(agentType: SandboxAgentType, stdout: string): ParsedRu
         outputTokens: parsed.usage.outputTokens,
         cachedInputTokens: parsed.usage.cachedInputTokens,
       },
-      costUsd: parsed.usage.costUsd,
+      costUsd: parsed.costUsd,
     };
   }
   const parsed = parsePiJsonl(stdout);
