@@ -39,6 +39,15 @@ This starts:
 
 `pnpm dev` runs the server in watch mode and restarts on changes from workspace packages (including adapter packages). Use `pnpm dev:once` to run without file watching.
 
+## Sandboxed Adapter (Cloudflare)
+
+Paperclip now ships a `sandbox` adapter type for remote CLI execution. The first provider target is Cloudflare Sandbox via a Worker gateway.
+
+Reference files:
+
+- [`/Users/Konan/Documents/personal/paperclip/doc/SANDBOX-ADAPTER.md`](/Users/Konan/Documents/personal/paperclip/doc/SANDBOX-ADAPTER.md)
+- [`/Users/Konan/Documents/personal/paperclip/examples/cloudflare-sandbox-gateway/README.md`](/Users/Konan/Documents/personal/paperclip/examples/cloudflare-sandbox-gateway/README.md)
+
 Tailscale/private-auth dev mode:
 
 ```sh

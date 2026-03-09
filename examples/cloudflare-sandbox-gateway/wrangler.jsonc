@@ -1,0 +1,30 @@
+{
+  "name": "paperclip-sandbox-gateway",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-03-08",
+  "containers": [
+    {
+      "class_name": "Sandbox",
+      "image": "./Dockerfile",
+      "instance_type": "standard-1",
+      "max_instances": 10
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "Sandbox",
+        "class_name": "Sandbox"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["Sandbox"]
+    }
+  ],
+  "vars": {
+    "GATEWAY_TOKEN": ""
+  }
+}

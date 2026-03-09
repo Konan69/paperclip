@@ -47,6 +47,9 @@ importers:
       '@paperclipai/adapter-pi-local':
         specifier: workspace:*
         version: link:../packages/adapters/pi-local
+      '@paperclipai/adapter-sandbox':
+        specifier: workspace:*
+        version: link:../packages/adapters/sandbox
       '@paperclipai/adapter-utils':
         specifier: workspace:*
         version: link:../packages/adapter-utils
@@ -193,6 +196,40 @@ importers:
         specifier: ^5.7.3
         version: 5.9.3
 
+  packages/adapters/sandbox:
+    dependencies:
+      '@paperclipai/adapter-claude-local':
+        specifier: workspace:*
+        version: link:../claude-local
+      '@paperclipai/adapter-codex-local':
+        specifier: workspace:*
+        version: link:../codex-local
+      '@paperclipai/adapter-cursor-local':
+        specifier: workspace:*
+        version: link:../cursor-local
+      '@paperclipai/adapter-opencode-local':
+        specifier: workspace:*
+        version: link:../opencode-local
+      '@paperclipai/adapter-pi-local':
+        specifier: workspace:*
+        version: link:../pi-local
+      '@paperclipai/adapter-utils':
+        specifier: workspace:*
+        version: link:../../adapter-utils
+      '@paperclipai/sandbox-provider-cloudflare':
+        specifier: workspace:*
+        version: link:../../sandbox-provider-cloudflare
+      picocolors:
+        specifier: ^1.1.1
+        version: 1.1.1
+    devDependencies:
+      '@types/node':
+        specifier: ^24.6.0
+        version: 24.12.0
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+
   packages/db:
     dependencies:
       '@paperclipai/shared':
@@ -220,6 +257,19 @@ importers:
       vitest:
         specifier: ^3.0.5
         version: 3.2.4(@types/debug@4.1.12)(@types/node@24.12.0)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)
+
+  packages/sandbox-provider-cloudflare:
+    dependencies:
+      '@paperclipai/adapter-utils':
+        specifier: workspace:*
+        version: link:../adapter-utils
+    devDependencies:
+      '@types/node':
+        specifier: ^24.6.0
+        version: 24.12.0
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
 
   packages/shared:
     dependencies:
@@ -254,6 +304,9 @@ importers:
       '@paperclipai/adapter-pi-local':
         specifier: workspace:*
         version: link:../packages/adapters/pi-local
+      '@paperclipai/adapter-sandbox':
+        specifier: workspace:*
+        version: link:../packages/adapters/sandbox
       '@paperclipai/adapter-utils':
         specifier: workspace:*
         version: link:../packages/adapter-utils
@@ -369,6 +422,9 @@ importers:
       '@paperclipai/adapter-pi-local':
         specifier: workspace:*
         version: link:../packages/adapters/pi-local
+      '@paperclipai/adapter-sandbox':
+        specifier: workspace:*
+        version: link:../packages/adapters/sandbox
       '@paperclipai/adapter-utils':
         specifier: workspace:*
         version: link:../packages/adapter-utils

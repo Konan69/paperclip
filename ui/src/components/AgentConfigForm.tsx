@@ -272,11 +272,24 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
   const adapterType = isCreate
     ? props.values.adapterType
     : overlay.adapterType ?? props.agent.adapterType;
-  const isLocal =
-    adapterType === "claude_local" ||
-    adapterType === "codex_local" ||
-    adapterType === "opencode_local" ||
-    adapterType === "cursor";
+  const sandboxAgentType = isCreate
+    ? props.values.sandboxAgentType
+    : String(
+        (overlay.adapterConfig.sandboxAgentType ??
+          overlay.adapterConfig["sandboxAgentType"] ??
+          config.sandboxAgentType ??
+          "claude_local"),
+      );
+  const effectiveCliType =
+    adapterType === "sandbox"
+      ? sandboxAgentType
+      : adapterType;
+  const isCliStyle =
+    effectiveCliType === "claude_local" ||
+    effectiveCliType === "codex_local" ||
+    effectiveCliType === "opencode_local" ||
+    effectiveCliType === "cursor" ||
+    effectiveCliType === "pi_local";
   const uiAdapter = useMemo(() => getUIAdapter(adapterType), [adapterType]);
 
   // Fetch adapter models for the effective adapter type
@@ -342,35 +355,35 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
     : eff("adapterConfig", "model", String(config.model ?? ""));
 
   const thinkingEffortKey =
-    adapterType === "codex_local"
+    effectiveCliType === "codex_local"
       ? "modelReasoningEffort"
-      : adapterType === "cursor"
+      : effectiveCliType === "cursor"
         ? "mode"
-        : adapterType === "opencode_local"
+        : effectiveCliType === "opencode_local"
           ? "variant"
           : "effort";
   const thinkingEffortOptions =
-    adapterType === "codex_local"
+    effectiveCliType === "codex_local"
       ? codexThinkingEffortOptions
-      : adapterType === "cursor"
+      : effectiveCliType === "cursor"
         ? cursorModeOptions
-        : adapterType === "opencode_local"
+        : effectiveCliType === "opencode_local"
           ? openCodeThinkingEffortOptions
           : claudeThinkingEffortOptions;
   const currentThinkingEffort = isCreate
     ? val!.thinkingEffort
-    : adapterType === "codex_local"
+    : effectiveCliType === "codex_local"
       ? eff(
           "adapterConfig",
           "modelReasoningEffort",
           String(config.modelReasoningEffort ?? config.reasoningEffort ?? ""),
         )
-      : adapterType === "cursor"
+      : effectiveCliType === "cursor"
         ? eff("adapterConfig", "mode", String(config.mode ?? ""))
-        : adapterType === "opencode_local"
+        : effectiveCliType === "opencode_local"
           ? eff("adapterConfig", "variant", String(config.variant ?? ""))
       : eff("adapterConfig", "effort", String(config.effort ?? ""));
-  const codexSearchEnabled = adapterType === "codex_local"
+  const codexSearchEnabled = effectiveCliType === "codex_local"
     ? (isCreate ? Boolean(val!.search) : eff("adapterConfig", "search", Boolean(config.search)))
     : false;
 
@@ -433,7 +446,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                 }}
               />
             </Field>
-            {isLocal && (
+            {isCliStyle && (
               <Field label="Prompt Template" hint={help.promptTemplate}>
                 <MarkdownEditor
                   value={eff(
@@ -491,6 +504,12 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                     nextValues.model = DEFAULT_CURSOR_LOCAL_MODEL;
                   } else if (t === "opencode_local") {
                     nextValues.model = "";
+                  } else if (t === "sandbox") {
+                    nextValues.sandboxProviderType = "cloudflare";
+                    nextValues.sandboxAgentType = "claude_local";
+                    nextValues.sandboxNamespace = "paperclip";
+                    nextValues.sandboxInstanceType = "standard";
+                    nextValues.sandboxKeepAlive = true;
                   }
                   set!(nextValues);
                 } else {
@@ -510,6 +529,16 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                       modelReasoningEffort: "",
                       variant: "",
                       mode: "",
+                      sandboxAgentType: t === "sandbox" ? "claude_local" : "",
+                      providerType: t === "sandbox" ? "cloudflare" : "",
+                      providerConfig:
+                        t === "sandbox"
+                          ? {
+                              namespace: "paperclip",
+                              instanceType: "standard",
+                            }
+                          : {},
+                      keepAlive: t === "sandbox",
                       ...(t === "codex_local"
                         ? {
                             dangerouslyBypassApprovalsAndSandbox:
@@ -536,7 +565,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
           )}
 
           {/* Working directory */}
-          {isLocal && (
+          {isCliStyle && (
             <Field label="Working directory" hint={help.cwd}>
               <div className="flex items-center gap-2 rounded-md border border-border px-2.5 py-1.5">
                 <FolderOpen className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
@@ -561,7 +590,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
           )}
 
           {/* Prompt template (create mode only — edit mode shows this in Identity) */}
-          {isLocal && isCreate && (
+          {isCliStyle && isCreate && (
             <Field label="Prompt Template" hint={help.promptTemplate}>
               <MarkdownEditor
                 value={val!.promptTemplate}
@@ -584,7 +613,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
       </div>
 
       {/* ---- Permissions & Configuration ---- */}
-      {isLocal && (
+      {isCliStyle && (
         <div className={cn(!cards && "border-b border-border")}>
           {cards
             ? <h3 className="text-sm font-medium mb-3">Permissions &amp; Configuration</h3>
@@ -606,12 +635,14 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                   immediate
                   className={inputClass}
                   placeholder={
-                    adapterType === "codex_local"
+                    effectiveCliType === "codex_local"
                       ? "codex"
-                      : adapterType === "cursor"
+                      : effectiveCliType === "cursor"
                         ? "agent"
-                        : adapterType === "opencode_local"
+                        : effectiveCliType === "opencode_local"
                           ? "opencode"
+                          : effectiveCliType === "pi_local"
+                            ? "pi"
                           : "claude"
                   }
                 />
@@ -627,9 +658,9 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                 }
                 open={modelOpen}
                 onOpenChange={setModelOpen}
-                allowDefault={adapterType !== "opencode_local"}
-                required={adapterType === "opencode_local"}
-                groupByProvider={adapterType === "opencode_local"}
+                allowDefault={effectiveCliType !== "opencode_local"}
+                required={effectiveCliType === "opencode_local"}
+                groupByProvider={effectiveCliType === "opencode_local"}
               />
               {fetchedModelsError && (
                 <p className="text-xs text-destructive">
@@ -650,7 +681,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                 open={thinkingEffortOpen}
                 onOpenChange={setThinkingEffortOpen}
               />
-              {adapterType === "codex_local" &&
+              {effectiveCliType === "codex_local" &&
                 codexSearchEnabled &&
                 currentThinkingEffort === "minimal" && (
                   <p className="text-xs text-amber-400">
@@ -684,7 +715,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                   }}
                 />
               </Field>
-              {adapterType === "claude_local" && (
+              {effectiveCliType === "claude_local" && (
                 <ClaudeLocalAdvancedFields {...adapterFieldProps} />
               )}
 

@@ -214,6 +214,13 @@ export interface CLIAdapterModule {
 
 export interface CreateConfigValues {
   adapterType: string;
+  sandboxProviderType: string;
+  sandboxAgentType: string;
+  sandboxBaseUrl: string;
+  sandboxNamespace: string;
+  sandboxInstanceType: string;
+  sandboxImage: string;
+  sandboxKeepAlive: boolean;
   cwd: string;
   instructionsFilePath?: string;
   promptTemplate: string;
