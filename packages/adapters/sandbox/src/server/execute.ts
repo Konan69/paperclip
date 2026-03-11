@@ -147,10 +147,14 @@ function buildPrompt(ctx: AdapterExecutionContext, config: Record<string, unknow
 function parseAgentOutput(agentType: SandboxAgentType, stdout: string): ParsedRun {
   if (agentType === "claude_local") {
     const parsed = parseClaudeStreamJson(stdout);
+    const claudeSubtype = asString(parsed.resultJson?.subtype, "").trim().toLowerCase();
     return {
       sessionId: asString(parsed.resultJson?.session_id, "").trim() || parsed.sessionId || null,
       summary: parsed.summary ?? null,
-      errorMessage: parsed.resultJson ? describeClaudeFailure(parsed.resultJson) : null,
+      errorMessage:
+        parsed.resultJson && claudeSubtype !== "success"
+          ? describeClaudeFailure(parsed.resultJson)
+          : null,
       usage: parsed.usage ?? undefined,
       costUsd: parsed.costUsd ?? null,
     };
@@ -307,6 +311,12 @@ function shellEscape(value: string) {
   return `'${value.replace(/'/g, `'\"'\"'`)}'`;
 }
 
+function defaultCwdForProvider(config: Record<string, unknown>) {
+  return asString(config.providerType, "cloudflare").trim() === "e2b"
+    ? "/home/user/workspace"
+    : "/workspace";
+}
+
 async function syncRepoIfNeeded(
   instance: Awaited<ReturnType<SandboxProvider["create"]>>,
   ctx: AdapterExecutionContext,
@@ -332,6 +342,46 @@ async function syncRepoIfNeeded(
       "stderr",
       `[paperclip] Warning: failed to clone workspace repo into sandbox: ${err instanceof Error ? err.message : String(err)}\n`,
     );
+  }
+}
+
+async function ensureWorkspaceDir(
+  instance: Awaited<ReturnType<SandboxProvider["create"]>>,
+  cwd: string,
+) {
+  await instance.exec(`sh -lc ${shellEscape(`mkdir -p ${shellEscape(cwd)}`)}`, {
+    timeoutSec: 30,
+  });
+}
+
+async function runBootstrapCommandIfNeeded(input: {
+  ctx: AdapterExecutionContext;
+  instance: Awaited<ReturnType<SandboxProvider["create"]>>;
+  config: Record<string, unknown>;
+  cwd: string;
+  env: Record<string, string>;
+}) {
+  const bootstrapCommand = asString(input.config.bootstrapCommand, "").trim();
+  if (!bootstrapCommand) return;
+
+  await input.ctx.onLog("stderr", "[paperclip] Running sandbox bootstrap command.\n");
+  const result = await input.instance.exec(bootstrapCommand, {
+    cwd: input.cwd,
+    env: input.env,
+    timeoutSec: asNumber(input.config.timeoutSec, 0) || 120,
+    onStdout: async (chunk) => {
+      await input.ctx.onLog("stdout", chunk);
+    },
+    onStderr: async (chunk) => {
+      await input.ctx.onLog("stderr", chunk);
+    },
+  });
+
+  if (result.timedOut) {
+    throw new Error("Sandbox bootstrap command timed out");
+  }
+  if (typeof result.exitCode === "number" && result.exitCode !== 0) {
+    throw new Error(`Sandbox bootstrap command failed with exit code ${result.exitCode}`);
   }
 }
 
@@ -423,7 +473,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   const savedSandboxId = asString(runtimeSession.sandboxId, "").trim() || null;
   const cliSession = normalizeInnerSession(runtimeSession);
   const cliSessionId = asString(cliSession.sessionId, "").trim() || null;
-  const cwd = asString(config.cwd, "/workspace").trim() || "/workspace";
+  const cwd = asString(config.cwd, defaultCwdForProvider(config)).trim() || defaultCwdForProvider(config);
   const env = buildRuntimeEnv(ctx, cwd);
 
   let instance = keepAlive && savedSandboxId
@@ -441,7 +491,15 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
         },
       });
 
+  await ensureWorkspaceDir(instance, cwd);
   await syncRepoIfNeeded(instance, ctx, cwd);
+  await runBootstrapCommandIfNeeded({
+    ctx,
+    instance,
+    config,
+    cwd,
+    env,
+  });
 
   let attempt = await runInnerAgent({
     ctx,

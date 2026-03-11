@@ -1,83 +1,101 @@
-# Sandboxed Agent Execution — Progress Log
+# Sandboxed Agent Execution — Progress
 
-## Session: 2026-03-09
+## 2026-03-10
 
-### Build Phase (Complete)
+### Repo / Branch
 
-- [x] Added shared sandbox contracts in `packages/adapter-utils`
-- [x] Added `@paperclipai/sandbox-provider-cloudflare`
-- [x] Added `@paperclipai/sandbox-provider-e2b`
-- [x] Added `@paperclipai/sandbox-provider-opensandbox`
-- [x] Added `@paperclipai/adapter-sandbox`
-- [x] Registered `sandbox` across shared/server/ui/cli
-- [x] Added multi-provider sandbox config fields to the board UI
-- [x] Added Cloudflare gateway example under `examples/cloudflare-sandbox-gateway`
-- [x] Added sandbox adapter docs in `doc/SANDBOX-ADAPTER.md`
+- sandbox work is replayed onto `upstream/master` on branch `codex/sandbox-upstream-sync`
+- registry/package/UI conflicts from upstream were resolved
+- CLI drift from upstream plugin/auth changes was reconciled without touching cursor tests
 
-### Hardening Pass (Complete)
+### Implementation State
 
-- [x] Fixed Cloudflare provider namespace propagation on reconnect/status/exec/files
-- [x] Fixed Cloudflare non-interactive CLI execution by emulating `stdin` with temp files
-- [x] Added provider contract test coverage for namespace + stdin behavior
-- [x] Added E2B/OpenSandbox provider dispatch + validation coverage
-- [x] Validated example worker typecheck after gateway changes
+- multi-provider sandbox adapter is implemented
+- providers wired:
+  - Cloudflare
+  - E2B
+  - OpenSandbox
+- UI now defaults to E2B and exposes managed-first sandbox setup in the existing agent create/edit flow:
+  - E2B as the recommended managed preset
+  - OpenSandbox as the recommended self-hosted preset
+  - Cloudflare as the advanced preset
+- provider credentials now have dedicated setup fields and can be saved into Paperclip secrets from the sandbox form
+- raw provider plumbing moved behind advanced sandbox settings
+- sandbox adapter now supports `bootstrapCommand` for remote sandbox prep before the inner CLI runs
+- sandbox adapter now creates the remote cwd before exec and uses provider-aware defaults:
+  - E2B: `/home/user/workspace`
+  - Cloudflare/OpenSandbox: `/workspace`
 
-### Verification Phase (Mostly Complete)
+### Verification State
 
-- [x] `pnpm -r typecheck`
-- [x] `pnpm build`
-- [x] Focused sandbox tests
-- [x] Browser verification of sandbox UI fields
-- [x] Live API verification of provider-specific `Test environment` validation
-- [x] API verification that Cloudflare provider still passes live environment checks
-- [x] Real Cloudflare deployment from `wrangler deploy`
-- [~] Real Cloudflare sandbox `exec` validation
+- `pnpm -r typecheck`: pass
+- `pnpm build`: pass
+- focused sandbox tests: pass
 
-### Live Validation Notes
+### Live Validation
 
-- Local Paperclip dev server running at `http://127.0.0.1:3100`
-- Helium CDP instance created on `127.0.0.1:9333` using the real `net.imput.helium` profile
-- Created/used company `Sandbox Co` and agent `Sandbox Tester`
-- Sandbox adapter tested end to end against a local mock Cloudflare gateway on `http://127.0.0.1:4011`
-- UI showed `Passed` for environment test
-- Manual heartbeat succeeded and parsed:
-  - assistant text: `mock sandbox heartbeat ok`
-  - usage: input `11`, output `5`, cached `2`
-  - session: `mock-thread-1`
-- Real Cloudflare gateway deployed at `https://paperclip-sandbox-gateway.kixeyems0.workers.dev`
-- Real Cloudflare Paperclip environment test passed against the deployed Worker
-- Real Cloudflare sandbox creation now returns `200` from `/v1/sandboxes`
-- Real Cloudflare sandbox `exec` is still blocked on container readiness in the last fully published image
-- Live API now validates new provider branches:
-  - `e2b` missing template -> structured validation failure
-  - `e2b` with dummy key + template -> reaches provider and returns auth failure
-  - `opensandbox` missing image -> structured validation failure
-  - `opensandbox` with dummy key + image -> reaches provider and returns connectivity failure
-- Browser-verified live UI now swaps provider-specific fields for Cloudflare, E2B, and OpenSandbox
+- direct E2B provider check passed with the provided API key
+- direct E2B sandbox create/exec/destroy passed
+- direct E2B `codex` template check passed (`codex` present on path)
+- direct E2B `opencode` template check passed (`opencode` present on path)
+- Paperclip live `test-environment` for E2B passed
+- Paperclip live heartbeat succeeded end to end on E2B for:
+  - Codex: `e612abf4-a5ba-4e4a-8e16-c73cdf30e070`
+  - Claude Code: `c8dbc48c-9a6f-4d93-bf6c-cd335604f7a9`
+  - OpenCode: `58a46f27-dbf6-4e01-bf5d-eb914ab2852e`
 
-### Post-Completion Improvements (2026-03-09)
+### Issue Alignment
 
-Updated Cloudflare gateway example with improvements:
-- Fixed Docker base image to specific version (0.7.0) for reproducibility
-- Added opencode-ai support to the gateway container
-- Added deployment notes to README (workers.dev enablement, container provisioning delay)
-- Updated Cloudflare dependencies to latest versions
-- Removed redundant workspace directory creation command
-- Added clean `PaperclipSandbox` namespace migration while preserving legacy `Sandbox` export
+- maintainer comment direction was reviewed from [issue #248](https://github.com/paperclipai/paperclip/issues/248)
+- current UI changes align with that direction by reducing transport/provider ceremony in the default flow and treating Cloudflare as advanced
 
-### External Blockers (Current)
+### Cloudflare Live Validation (Complete)
 
-1. Cloudflare live `exec` still hangs during sandbox readiness on the last fully published image
-2. External provider live sign-up/credential validation is incomplete:
-   - `e2b.dev` refuses direct connections from this machine even though other internet access works
-   - OpenSandbox public hostnames/docs appear inconsistent from this environment
-3. A new Cloudflare gateway image push is in progress in shell session `87603`
+- Cloudflare gateway deployed at `https://paperclip-sandbox-gateway.kixeyems0.workers.dev`
+- Gateway health endpoint responds: `{"ok":true,"detail":"Cloudflare sandbox gateway ready"}`
+- Removed empty `vars.GATEWAY_TOKEN` shadow from `wrangler.jsonc`
+- Reset the Worker secret and confirmed auth enforcement:
+  - unauthenticated `POST /v1/sandboxes` returns `401`
+  - authenticated `POST /v1/sandboxes` returns `200`
+- repo-local Wrangler + local Docker now deploy the gateway/container path successfully
+- Paperclip live heartbeat succeeded against the protected Cloudflare gateway:
+  - Codex: `ad9bba99-9975-49b1-87e5-9baafd214a1a`
+- Full Paperclip sandbox lifecycle validated against Cloudflare provider
+- Cloudflare provider code remains implemented under advanced settings
+- gateway/image bootstrap is heavier than E2B; current UX optimizes managed/default path first with Cloudflare under advanced settings
 
-### Known Unrelated Repo Failures
+### Cleanup Complete
 
-- `pnpm test:run` still fails in existing non-sandbox tests:
-  - `packages/adapters/opencode-local/src/server/parse.test.ts`
-  - `server/src/__tests__/opencode-local-adapter.test.ts`
-  - `server/src/__tests__/opencode-local-adapter-environment.test.ts`
-  - `server/src/__tests__/cursor-local-adapter-environment.test.ts`
-  - `server/src/__tests__/cursor-local-execute.test.ts`
+- Removed duplicate planning files from `doc/` directory (task_plan.md, progress.md, findings.md)
+- All planning artifacts consolidated to root directory
+- Typecheck and build both pass
+
+## 2026-03-11
+
+### Hardening Pass
+
+- fixed OpenSandbox cold-start timeout handling by threading `requestTimeoutSeconds` through the provider connection/create path
+- fixed sandbox UI config fallback mismatch so missing provider state now resolves to E2B, not Cloudflare
+- fixed the real browser new-issue flow by making `NewIssueDialog` resolve the active company from the router path and by replacing the broken assignee/project popover pair in that modal with stable native selects
+
+### Verification State
+
+- `pnpm -r typecheck`: pass
+- `pnpm build`: pass
+- `pnpm test:run`: pass
+
+### Product Workflow Validation
+
+- browser-created assigned issue now works end to end
+- new issue `SAN-4` created from the actual Paperclip modal
+- assigned run landed successfully on the issue page with run `532140ef`
+- OpenSandbox regression check after timeout fix passed:
+  - direct create/exec/destroy succeeded with `opensandbox-regression-ok`
+- Cloudflare gateway auth regression check passed:
+  - unauthenticated `GET /v1/health` still returns `401`
+
+### Notes
+
+- the successful live E2B heartbeat used `bootstrapCommand` plus a deterministic wrapper binary to validate the full Paperclip sandbox lifecycle without requiring separate OpenAI model credentials inside the remote CLI
+- the successful Cloudflare heartbeat used the same Paperclip path against the live protected gateway and validated create/exec/logging through the deployed Worker
+- full `pnpm test:run` is now green on this branch

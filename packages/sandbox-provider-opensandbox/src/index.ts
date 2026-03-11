@@ -12,13 +12,16 @@ import type {
   SandboxProvider,
   SandboxTestResult,
 } from "@paperclipai/adapter-utils";
-import { asString, parseObject } from "@paperclipai/adapter-utils/server-utils";
+import { asNumber, asString, parseObject } from "@paperclipai/adapter-utils/server-utils";
+
+const DEFAULT_OPEN_SANDBOX_REQUEST_TIMEOUT_SECONDS = 180;
 
 interface OpenSandboxProviderConfig {
   apiKey?: string;
   domain?: string;
   image?: string;
   useServerProxy: boolean;
+  requestTimeoutSeconds: number;
 }
 
 function shellEscape(value: string) {
@@ -56,6 +59,10 @@ function readConfig(config: Record<string, unknown>): OpenSandboxProviderConfig 
       asString(providerConfig.image, "").trim() ||
       undefined,
     useServerProxy: providerConfig.useServerProxy === true,
+    requestTimeoutSeconds: Math.max(
+      30,
+      asNumber(providerConfig.requestTimeoutSeconds, DEFAULT_OPEN_SANDBOX_REQUEST_TIMEOUT_SECONDS),
+    ),
   };
 }
 
@@ -64,6 +71,7 @@ function toConnectionConfig(config: OpenSandboxProviderConfig) {
     ...(config.domain ? { domain: config.domain } : {}),
     ...(config.apiKey ? { apiKey: config.apiKey } : {}),
     ...(config.useServerProxy ? { useServerProxy: true } : {}),
+    requestTimeoutSeconds: config.requestTimeoutSeconds,
   });
 }
 
@@ -183,6 +191,7 @@ export class OpenSandboxProvider implements SandboxProvider {
       ...(opts.env ? { env: opts.env } : {}),
       ...(toStringMetadata(opts.metadata) ? { metadata: toStringMetadata(opts.metadata) } : {}),
       ...(typeof opts.timeoutSec === "number" ? { timeoutSeconds: timeoutSeconds(opts.timeoutSec) } : {}),
+      readyTimeoutSeconds: config.requestTimeoutSeconds,
     });
 
     return new OpenSandboxInstance(sandbox.id, sandbox);

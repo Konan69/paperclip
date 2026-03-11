@@ -8,7 +8,7 @@ function parseCommaArgs(value: string): string[] {
 }
 
 export function buildSandboxConfig(values: CreateConfigValues): Record<string, unknown> {
-  const providerType = values.sandboxProviderType || "cloudflare";
+  const providerType = values.sandboxProviderType || "e2b";
   let providerConfig: Record<string, unknown>;
 
   if (providerType === "e2b") {
@@ -40,6 +40,7 @@ export function buildSandboxConfig(values: CreateConfigValues): Record<string, u
   };
 
   if (values.cwd) config.cwd = values.cwd;
+  if (values.sandboxBootstrapCommand) config.bootstrapCommand = values.sandboxBootstrapCommand;
   if (values.instructionsFilePath) config.instructionsFilePath = values.instructionsFilePath;
   if (values.promptTemplate) config.promptTemplate = values.promptTemplate;
   if (values.bootstrapPrompt) config.bootstrapPromptTemplate = values.bootstrapPrompt;

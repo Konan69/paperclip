@@ -316,6 +316,8 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
     eff: eff as <T>(group: "adapterConfig", field: string, original: T) => T,
     mark: mark as (group: "adapterConfig", field: string, value: unknown) => void,
     models,
+    secrets: availableSecrets,
+    onCreateSecret: async (name: string, value: string) => createSecret.mutateAsync({ name, value }),
   };
 
   // Section toggle state — advanced always starts collapsed
@@ -505,11 +507,11 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                   } else if (t === "opencode_local") {
                     nextValues.model = "";
                   } else if (t === "sandbox") {
-                    nextValues.sandboxProviderType = "cloudflare";
+                    nextValues.sandboxProviderType = "e2b";
                     nextValues.sandboxAgentType = "claude_local";
                     nextValues.sandboxNamespace = "paperclip";
                     nextValues.sandboxInstanceType = "standard";
-                    nextValues.sandboxTemplate = "";
+                    nextValues.sandboxTemplate = "base";
                     nextValues.sandboxDomain = "";
                     nextValues.sandboxKeepAlive = true;
                   }
@@ -532,12 +534,11 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                       variant: "",
                       mode: "",
                       sandboxAgentType: t === "sandbox" ? "claude_local" : "",
-                      providerType: t === "sandbox" ? "cloudflare" : "",
+                      providerType: t === "sandbox" ? "e2b" : "",
                       providerConfig:
                         t === "sandbox"
                           ? {
-                              namespace: "paperclip",
-                              instanceType: "standard",
+                              template: "base",
                             }
                           : {},
                       keepAlive: t === "sandbox",

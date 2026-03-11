@@ -13,6 +13,7 @@ const baseValues: CreateConfigValues = {
   sandboxTemplate: "",
   sandboxDomain: "",
   sandboxKeepAlive: true,
+  sandboxBootstrapCommand: "",
   cwd: "",
   instructionsFilePath: "",
   promptTemplate: "",
@@ -59,12 +60,14 @@ describe("buildSandboxConfig", () => {
       sandboxProviderType: "e2b",
       sandboxTemplate: "paperclip-codex",
       sandboxDomain: "e2b.app",
+      sandboxBootstrapCommand: "sh -lc 'echo ready'",
     });
 
     expect(config.providerConfig).toEqual({
       template: "paperclip-codex",
       domain: "e2b.app",
     });
+    expect(config.bootstrapCommand).toBe("sh -lc 'echo ready'");
   });
 
   it("builds OpenSandbox provider config", () => {

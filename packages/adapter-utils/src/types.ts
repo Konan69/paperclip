@@ -223,6 +223,7 @@ export interface CreateConfigValues {
   sandboxTemplate: string;
   sandboxDomain: string;
   sandboxKeepAlive: boolean;
+  sandboxBootstrapCommand: string;
   cwd: string;
   instructionsFilePath?: string;
   promptTemplate: string;

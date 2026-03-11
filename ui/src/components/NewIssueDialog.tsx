@@ -10,6 +10,7 @@ import { assetsApi } from "../api/assets";
 import { queryKeys } from "../lib/queryKeys";
 import { useProjectOrder } from "../hooks/useProjectOrder";
 import { getRecentAssigneeIds, sortAgentsByRecency, trackRecentAssignee } from "../lib/recent-assignees";
+import { useLocation, useParams } from "@/lib/router";
 import {
   Dialog,
   DialogContent,
@@ -36,10 +37,10 @@ import {
   Paperclip,
 } from "lucide-react";
 import { cn } from "../lib/utils";
+import { extractCompanyPrefixFromPath, normalizeCompanyPrefix } from "../lib/company-routes";
 import { extractProviderIdWithFallback } from "../lib/model-utils";
 import { issueStatusText, issueStatusTextDefault, priorityColor, priorityColorDefault } from "../lib/status-colors";
 import { MarkdownEditor, type MarkdownEditorRef, type MentionOption } from "./MarkdownEditor";
-import { AgentIcon } from "./AgentIconPicker";
 import { InlineEntitySelector, type InlineEntityOption } from "./InlineEntitySelector";
 
 const DRAFT_KEY = "paperclip:issue-draft";
@@ -167,6 +168,8 @@ const priorities = [
 export function NewIssueDialog() {
   const { newIssueOpen, newIssueDefaults, closeNewIssue } = useDialog();
   const { companies, selectedCompanyId, selectedCompany } = useCompany();
+  const { companyPrefix } = useParams<{ companyPrefix?: string }>();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -184,7 +187,14 @@ export function NewIssueDialog() {
   const draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const executionWorkspaceDefaultProjectId = useRef<string | null>(null);
 
-  const effectiveCompanyId = dialogCompanyId ?? selectedCompanyId;
+  const routeCompanyId = useMemo(() => {
+    const requestedPrefix = companyPrefix
+      ? normalizeCompanyPrefix(companyPrefix)
+      : extractCompanyPrefixFromPath(location.pathname);
+    if (!requestedPrefix) return null;
+    return companies.find((company) => normalizeCompanyPrefix(company.issuePrefix) === requestedPrefix)?.id ?? null;
+  }, [companies, companyPrefix, location.pathname]);
+  const effectiveCompanyId = dialogCompanyId ?? routeCompanyId ?? selectedCompanyId;
   const dialogCompany = companies.find((c) => c.id === effectiveCompanyId) ?? selectedCompany;
 
   // Popover states
@@ -194,8 +204,8 @@ export function NewIssueDialog() {
   const [companyOpen, setCompanyOpen] = useState(false);
   const descriptionEditorRef = useRef<MarkdownEditorRef>(null);
   const attachInputRef = useRef<HTMLInputElement | null>(null);
-  const assigneeSelectorRef = useRef<HTMLButtonElement | null>(null);
-  const projectSelectorRef = useRef<HTMLButtonElement | null>(null);
+  const assigneeSelectorRef = useRef<HTMLSelectElement | null>(null);
+  const projectSelectorRef = useRef<HTMLSelectElement | null>(null);
 
   const { data: agents } = useQuery({
     queryKey: queryKeys.agents.list(effectiveCompanyId!),
@@ -319,7 +329,7 @@ export function NewIssueDialog() {
   // Restore draft or apply defaults when dialog opens
   useEffect(() => {
     if (!newIssueOpen) return;
-    setDialogCompanyId(selectedCompanyId);
+    setDialogCompanyId(routeCompanyId ?? selectedCompanyId);
     executionWorkspaceDefaultProjectId.current = null;
 
     const draft = loadDraft();
@@ -355,7 +365,7 @@ export function NewIssueDialog() {
       setAssigneeChrome(false);
       setUseIsolatedExecutionWorkspace(false);
     }
-  }, [newIssueOpen, newIssueDefaults]);
+  }, [newIssueOpen, newIssueDefaults, routeCompanyId, selectedCompanyId]);
 
   useEffect(() => {
     if (!supportsAssigneeOverrides) {
@@ -474,7 +484,6 @@ export function NewIssueDialog() {
   const hasDraft = title.trim().length > 0 || description.trim().length > 0;
   const currentStatus = statuses.find((s) => s.value === status) ?? statuses[1]!;
   const currentPriority = priorities.find((p) => p.value === priority);
-  const currentAssignee = (agents ?? []).find((a) => a.id === assigneeId);
   const currentProject = orderedProjects.find((project) => project.id === projectId);
   const currentProjectExecutionWorkspacePolicy = SHOW_EXPERIMENTAL_ISSUE_WORKTREE_UI
     ? currentProject?.executionWorkspacePolicy ?? null
@@ -495,28 +504,14 @@ export function NewIssueDialog() {
         ? ISSUE_THINKING_EFFORT_OPTIONS.opencode_local
       : ISSUE_THINKING_EFFORT_OPTIONS.claude_local;
   const recentAssigneeIds = useMemo(() => getRecentAssigneeIds(), [newIssueOpen]);
-  const assigneeOptions = useMemo<InlineEntityOption[]>(
+  const assigneeOptions = useMemo(
     () =>
       sortAgentsByRecency(
         (agents ?? []).filter((agent) => agent.status !== "terminated"),
         recentAssigneeIds,
-      ).map((agent) => ({
-        id: agent.id,
-        label: agent.name,
-        searchText: `${agent.name} ${agent.role} ${agent.title ?? ""}`,
-      })),
+      ),
     [agents, recentAssigneeIds],
   );
-  const projectOptions = useMemo<InlineEntityOption[]>(
-    () =>
-      orderedProjects.map((project) => ({
-        id: project.id,
-        label: project.name,
-        searchText: project.description ?? "",
-      })),
-    [orderedProjects],
-  );
-
   const handleProjectChange = useCallback((nextProjectId: string) => {
     setProjectId(nextProjectId);
     const nextProject = orderedProjects.find((project) => project.id === nextProjectId);
@@ -698,81 +693,39 @@ export function NewIssueDialog() {
           <div className="overflow-x-auto overscroll-x-contain">
             <div className="inline-flex items-center gap-2 text-sm text-muted-foreground flex-wrap sm:flex-nowrap sm:min-w-max">
               <span>For</span>
-              <InlineEntitySelector
+              <select
                 ref={assigneeSelectorRef}
+                className="rounded-md border border-border bg-muted/40 px-2 py-1 text-sm text-foreground"
                 value={assigneeId}
-                options={assigneeOptions}
-                placeholder="Assignee"
-                disablePortal
-                noneLabel="No assignee"
-                searchPlaceholder="Search assignees..."
-                emptyMessage="No assignees found."
-                onChange={(id) => { if (id) trackRecentAssignee(id); setAssigneeId(id); }}
-                onConfirm={() => {
-                  projectSelectorRef.current?.focus();
+                onChange={(event) => {
+                  const nextAssigneeId = event.target.value;
+                  if (nextAssigneeId) trackRecentAssignee(nextAssigneeId);
+                  setAssigneeId(nextAssigneeId);
                 }}
-                renderTriggerValue={(option) =>
-                  option && currentAssignee ? (
-                    <>
-                      <AgentIcon icon={currentAssignee.icon} className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                      <span className="truncate">{option.label}</span>
-                    </>
-                  ) : (
-                    <span className="text-muted-foreground">Assignee</span>
-                  )
-                }
-                renderOption={(option) => {
-                  if (!option.id) return <span className="truncate">{option.label}</span>;
-                  const assignee = (agents ?? []).find((agent) => agent.id === option.id);
-                  return (
-                    <>
-                      <AgentIcon icon={assignee?.icon} className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                      <span className="truncate">{option.label}</span>
-                    </>
-                  );
-                }}
-              />
+              >
+                <option value="">Assignee</option>
+                {assigneeOptions.map((agent) => (
+                  <option key={agent.id} value={agent.id}>
+                    {agent.name}
+                  </option>
+                ))}
+              </select>
               <span>in</span>
-              <InlineEntitySelector
+              <select
                 ref={projectSelectorRef}
+                className="rounded-md border border-border bg-muted/40 px-2 py-1 text-sm text-foreground"
                 value={projectId}
-                options={projectOptions}
-                placeholder="Project"
-                disablePortal
-                noneLabel="No project"
-                searchPlaceholder="Search projects..."
-                emptyMessage="No projects found."
-                onChange={handleProjectChange}
-                onConfirm={() => {
-                  descriptionEditorRef.current?.focus();
+                onChange={(event) => {
+                  handleProjectChange(event.target.value);
                 }}
-                renderTriggerValue={(option) =>
-                  option && currentProject ? (
-                    <>
-                      <span
-                        className="h-3.5 w-3.5 shrink-0 rounded-sm"
-                        style={{ backgroundColor: currentProject.color ?? "#6366f1" }}
-                      />
-                      <span className="truncate">{option.label}</span>
-                    </>
-                  ) : (
-                    <span className="text-muted-foreground">Project</span>
-                  )
-                }
-                renderOption={(option) => {
-                  if (!option.id) return <span className="truncate">{option.label}</span>;
-                  const project = orderedProjects.find((item) => item.id === option.id);
-                  return (
-                    <>
-                      <span
-                        className="h-3.5 w-3.5 shrink-0 rounded-sm"
-                        style={{ backgroundColor: project?.color ?? "#6366f1" }}
-                      />
-                      <span className="truncate">{option.label}</span>
-                    </>
-                  );
-                }}
-              />
+              >
+                <option value="">Project</option>
+                {orderedProjects.map((project) => (
+                  <option key={project.id} value={project.id}>
+                    {project.name}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
         </div>

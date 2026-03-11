@@ -32,6 +32,7 @@ Inner CLI fields follow the same general shape as the local adapters:
 - `instructionsFilePath`
 - `promptTemplate`
 - `bootstrapPromptTemplate`
+- `bootstrapCommand`
 - `command`
 - `model`
 - `extraArgs`
@@ -51,8 +52,23 @@ Provider auth:
 
 The board UI exposes `sandbox` as a normal adapter type in the existing agent create/edit form.
 
-- Cloudflare shows gateway URL, namespace, instance type, and image
-- E2B shows template and optional API domain
-- OpenSandbox shows optional API domain and image
+- default path is now managed-first:
+  - E2B is the recommended managed preset
+  - OpenSandbox is the recommended self-hosted preset
+  - Cloudflare is presented as advanced
+- provider credentials have dedicated setup fields in the sandbox form
+- those credentials can be saved into Paperclip secrets from the same form
+- raw provider fields live under advanced sandbox settings
+- Cloudflare advanced fields show gateway URL, namespace, instance type, and image
+- E2B advanced fields show optional API domain
+- OpenSandbox advanced fields show optional API domain and image
 
-The rest of the sandbox section stays shared: inner CLI runtime, keep-alive policy, instructions file, command/model/env controls, and environment testing.
+The rest of the sandbox section stays shared: inner CLI runtime, keep-alive policy, bootstrap command, instructions file, command/model/env controls, and environment testing.
+
+## Notes from live validation
+
+- E2B `codex` and `opencode` templates are reachable with the provider key and include those CLIs on path.
+- The adapter now creates the remote working directory before bootstrap/exec.
+- Default sandbox cwd is provider-aware:
+  - E2B defaults to `/home/user/workspace`
+  - Cloudflare/OpenSandbox default to `/workspace`

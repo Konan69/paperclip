@@ -23,8 +23,5 @@
       "tag": "v2",
       "new_sqlite_classes": ["PaperclipSandbox"]
     }
-  ],
-  "vars": {
-    "GATEWAY_TOKEN": ""
-  }
+  ]
 }
