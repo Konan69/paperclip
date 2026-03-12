@@ -10,6 +10,7 @@ import { asString, parseObject } from "@paperclipai/adapter-utils/server-utils";
 import { randomUUID } from "node:crypto";
 
 const DEFAULT_NAMESPACE = "paperclip";
+const DEFAULT_GATEWAY_TIMEOUT_MS = 60_000;
 
 interface CloudflareGatewayConfig {
   baseUrl: string;
@@ -52,6 +53,24 @@ async function readJson<T>(response: Response): Promise<T> {
 
 function shellEscape(value: string) {
   return `'${value.replace(/'/g, `'\"'\"'`)}'`;
+}
+
+async function fetchWithTimeout(input: URL | RequestInfo, init: RequestInit, timeoutMs = DEFAULT_GATEWAY_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function requestTimeoutMs(timeoutSec: number | undefined, fallbackMs = DEFAULT_GATEWAY_TIMEOUT_MS) {
+  if (!timeoutSec || timeoutSec <= 0) return fallbackMs;
+  return timeoutSec * 1000;
 }
 
 async function streamExecResponse(
@@ -147,38 +166,45 @@ class CloudflareSandboxInstance implements SandboxInstance {
     if (typeof opts.stdin === "string" && opts.stdin.length > 0) {
       stdinPath = `/tmp/paperclip-stdin-${randomUUID()}.txt`;
       await this.writeFile(stdinPath, opts.stdin);
-      resolvedCommand = `sh -lc ${shellEscape(`${command} < ${shellEscape(stdinPath)}`)}`;
+      resolvedCommand = `sh -lc ${shellEscape(`${command} < ${stdinPath}`)}`;
     }
 
-    const response = await fetch(this.endpoint(`/v1/sandboxes/${encodeURIComponent(this.id)}/exec`), {
-      method: "POST",
-      headers: this.headers(),
-      body: JSON.stringify({
-        command: resolvedCommand,
-        cwd: opts.cwd,
-        env: opts.env ?? {},
-        timeoutSec: opts.timeoutSec ?? 0,
-      }),
-    });
-
     try {
-      return await streamExecResponse(response, opts);
-    } finally {
-      if (stdinPath) {
-        void fetch(this.endpoint(`/v1/sandboxes/${encodeURIComponent(this.id)}/exec`), {
+      const response = await fetchWithTimeout(
+        this.endpoint(`/v1/sandboxes/${encodeURIComponent(this.id)}/exec`),
+        {
           method: "POST",
           headers: this.headers(),
           body: JSON.stringify({
-            command: `rm -f ${shellEscape(stdinPath)}`,
-            timeoutSec: 10,
+            command: resolvedCommand,
+            cwd: opts.cwd,
+            env: opts.env ?? {},
+            timeoutSec: opts.timeoutSec ?? 0,
           }),
-        }).catch(() => undefined);
+        },
+        requestTimeoutMs(opts.timeoutSec),
+      );
+      return await streamExecResponse(response, opts);
+    } finally {
+      if (stdinPath) {
+        void fetchWithTimeout(
+          this.endpoint(`/v1/sandboxes/${encodeURIComponent(this.id)}/exec`),
+          {
+            method: "POST",
+            headers: this.headers(),
+            body: JSON.stringify({
+              command: `rm -f ${shellEscape(stdinPath)}`,
+              timeoutSec: 10,
+            }),
+          },
+          requestTimeoutMs(10, 10_000),
+        ).catch(() => undefined);
       }
     }
   }
 
   async writeFile(path: string, content: string): Promise<void> {
-    const response = await fetch(this.endpoint(`/v1/sandboxes/${encodeURIComponent(this.id)}/files`), {
+    const response = await fetchWithTimeout(this.endpoint(`/v1/sandboxes/${encodeURIComponent(this.id)}/files`), {
       method: "PUT",
       headers: this.headers(),
       body: JSON.stringify({
@@ -192,7 +218,7 @@ class CloudflareSandboxInstance implements SandboxInstance {
   async readFile(path: string): Promise<string> {
     const url = this.endpoint(`/v1/sandboxes/${encodeURIComponent(this.id)}/files`);
     url.searchParams.set("path", path);
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(url, {
       method: "GET",
       headers: this.headers({ "content-type": "text/plain" }),
     });
@@ -201,7 +227,7 @@ class CloudflareSandboxInstance implements SandboxInstance {
   }
 
   async status() {
-    const response = await fetch(this.endpoint(`/v1/sandboxes/${encodeURIComponent(this.id)}`), {
+    const response = await fetchWithTimeout(this.endpoint(`/v1/sandboxes/${encodeURIComponent(this.id)}`), {
       method: "GET",
       headers: this.headers({ "content-type": "text/plain" }),
     });
@@ -215,7 +241,7 @@ class CloudflareSandboxInstance implements SandboxInstance {
   }
 
   async destroy(): Promise<void> {
-    const response = await fetch(this.endpoint(`/v1/sandboxes/${encodeURIComponent(this.id)}`), {
+    const response = await fetchWithTimeout(this.endpoint(`/v1/sandboxes/${encodeURIComponent(this.id)}`), {
       method: "DELETE",
       headers: this.headers({ "content-type": "text/plain" }),
     });
@@ -234,7 +260,7 @@ export class CloudflareSandboxProvider implements SandboxProvider {
 
   async create(opts: SandboxCreateOptions): Promise<SandboxInstance> {
     const gateway = this.gateway();
-    const response = await fetch(`${gateway.baseUrl}/v1/sandboxes`, {
+    const response = await fetchWithTimeout(`${gateway.baseUrl}/v1/sandboxes`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -249,9 +275,13 @@ export class CloudflareSandboxProvider implements SandboxProvider {
         instanceType: opts.instanceType,
         timeoutSec: opts.timeoutSec ?? 0,
       }),
-    });
+    }, requestTimeoutMs(opts.timeoutSec));
     const payload = await readJson<{ sandboxId?: string }>(response);
-    return new CloudflareSandboxInstance(payload.sandboxId ?? opts.sandboxId, gateway);
+    const sandboxId = asString(payload.sandboxId, "").trim() || asString(opts.sandboxId, "").trim();
+    if (!sandboxId) {
+      throw new Error("Cloudflare sandbox gateway did not return a sandboxId");
+    }
+    return new CloudflareSandboxInstance(sandboxId, gateway);
   }
 
   async reconnect(id: string): Promise<SandboxInstance> {

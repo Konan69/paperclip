@@ -104,7 +104,7 @@ class OpenSandboxInstance implements SandboxInstance {
     if (typeof opts.stdin === "string" && opts.stdin.length > 0) {
       stdinPath = `/tmp/paperclip-stdin-${randomUUID()}.txt`;
       await this.writeFile(stdinPath, opts.stdin);
-      resolvedCommand = `sh -lc ${shellEscape(`${command} < ${shellEscape(stdinPath)}`)}`;
+      resolvedCommand = `sh -lc ${shellEscape(`${command} < ${stdinPath}`)}`;
     }
 
     try {

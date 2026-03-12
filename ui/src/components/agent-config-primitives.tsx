@@ -24,7 +24,7 @@ export const help: Record<string, string> = {
   role: "Organizational role. Determines position and capabilities.",
   reportsTo: "The agent this one reports to in the org hierarchy.",
   capabilities: "Describes what this agent can do. Shown in the org chart and used for task routing.",
-  adapterType: "How this agent runs: local CLI (Claude/Codex/OpenCode), sandbox, OpenClaw Gateway, spawned process, or generic HTTP webhook.",
+  adapterType: "How this agent runs: a local adapter, sandbox, OpenClaw Gateway, spawned process, or generic HTTP webhook.",
   sandboxProviderType: "Which remote sandbox backend to use. E2B is the recommended managed default. OpenSandbox is the recommended self-hosted path. Cloudflare is advanced because it needs a gateway worker.",
   sandboxAgentType: "Which CLI runtime to launch inside the sandbox.",
   sandboxBaseUrl: "Cloudflare gateway URL. Paperclip talks to this service to create, run, and destroy Cloudflare sandboxes.",

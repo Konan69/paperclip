@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { Sandbox } from "e2b";
+import { Sandbox, TimeoutError } from "e2b";
 import type {
   SandboxCreateOptions,
   SandboxExecOptions,
@@ -90,7 +90,7 @@ class E2BSandboxInstance implements SandboxInstance {
     if (typeof opts.stdin === "string" && opts.stdin.length > 0) {
       stdinPath = `/tmp/paperclip-stdin-${randomUUID()}.txt`;
       await this.writeFile(stdinPath, opts.stdin);
-      resolvedCommand = `sh -lc ${shellEscape(`${command} < ${shellEscape(stdinPath)}`)}`;
+      resolvedCommand = `sh -lc ${shellEscape(`${command} < ${stdinPath}`)}`;
     }
 
     try {
@@ -109,8 +109,7 @@ class E2BSandboxInstance implements SandboxInstance {
           timedOut: false,
         };
       } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        if (/timeout|timed out/i.test(message)) {
+        if (err instanceof TimeoutError) {
           return {
             exitCode: null,
             signal: null,
@@ -169,8 +168,9 @@ export class E2BSandboxProvider implements SandboxProvider {
       ...(typeof opts.timeoutSec === "number" ? { timeoutMs: timeoutMs(opts.timeoutSec) } : {}),
     };
 
-    const sandbox = config.template
-      ? await Sandbox.create(config.template, baseOpts)
+    const template = opts.image ?? config.template;
+    const sandbox = template
+      ? await Sandbox.create(template, baseOpts)
       : await Sandbox.create(baseOpts);
 
     return new E2BSandboxInstance(sandbox.sandboxId, sandbox);
@@ -182,15 +182,22 @@ export class E2BSandboxProvider implements SandboxProvider {
   }
 
   async testConnection(config: Record<string, unknown> = this.config): Promise<SandboxTestResult> {
-    const providerConfig = readConfig(config);
-    const page = await Sandbox.list(buildConnection(providerConfig)).nextItems();
-    return {
-      ok: true,
-      detail:
-        page.length > 0
-          ? `E2B reachable; found ${page.length} sandbox(s) on the first page.`
-          : "E2B reachable.",
-    };
+    try {
+      const providerConfig = readConfig(config);
+      const page = await Sandbox.list(buildConnection(providerConfig)).nextItems();
+      return {
+        ok: true,
+        detail:
+          page.length > 0
+            ? `E2B reachable; found ${page.length} sandbox(s) on the first page.`
+            : "E2B reachable.",
+      };
+    } catch (err) {
+      return {
+        ok: false,
+        detail: err instanceof Error ? err.message : String(err),
+      };
+    }
   }
 }
 

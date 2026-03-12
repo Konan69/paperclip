@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import type { CreateConfigValues } from "@paperclipai/adapter-utils";
 import type { EnvBinding } from "@paperclipai/shared";
 import type { AdapterConfigFieldsProps } from "../types";
 import {
@@ -27,6 +28,11 @@ const sandboxProviderOptions = [
 ] as const;
 
 const instanceTypeOptions = ["lite", "standard", "heavy"] as const;
+const sandboxCredentialKeys = [
+  "E2B_API_KEY",
+  "OPEN_SANDBOX_API_KEY",
+  "CLOUDFLARE_GATEWAY_TOKEN",
+] as const;
 
 function recommendedE2BTemplate(agentType: string) {
   if (agentType === "codex_local") return "codex";
@@ -71,17 +77,29 @@ export function SandboxConfigFields({
   secrets = [],
   onCreateSecret,
 }: AdapterConfigFieldsProps) {
-  const providerConfig = (config.providerConfig ?? {}) as Record<string, unknown>;
+  const createValues = (values ?? {}) as CreateConfigValues;
+  const providerConfig = (
+    isCreate
+      ? {
+          baseUrl: createValues.sandboxBaseUrl ?? "",
+          namespace: createValues.sandboxNamespace ?? "paperclip",
+          instanceType: createValues.sandboxInstanceType ?? "standard",
+          image: createValues.sandboxImage ?? "",
+          template: createValues.sandboxTemplate ?? "",
+          domain: createValues.sandboxDomain ?? "",
+        }
+      : eff("adapterConfig", "providerConfig", (config.providerConfig ?? {}) as Record<string, unknown>)
+  ) as Record<string, unknown>;
   const sandboxAgentType = isCreate
-    ? values!.sandboxAgentType
+    ? createValues.sandboxAgentType || "claude_local"
     : eff("adapterConfig", "sandboxAgentType", String(config.sandboxAgentType ?? "claude_local"));
   const providerType = isCreate
-    ? values!.sandboxProviderType
+    ? createValues.sandboxProviderType || "e2b"
     : eff("adapterConfig", "providerType", String(config.providerType ?? "e2b"));
   const envConfig = (
     isCreate
-      ? (values!.envBindings ?? {})
-      : eff("adapterConfig", "env", (config.env ?? {}) as Record<string, EnvBinding>)
+      ? (createValues.envBindings ?? {})
+      : eff("adapterConfig", "env", ((config.env ?? {}) as Record<string, EnvBinding>) ?? {})
   ) as Record<string, EnvBinding>;
 
   const [advancedOpen, setAdvancedOpen] = useState(!isCreate);
@@ -97,8 +115,14 @@ export function SandboxConfigFields({
     [secrets],
   );
 
-  const updateProviderConfig = (next: Record<string, unknown>) =>
-    mark("adapterConfig", "providerConfig", { ...providerConfig, ...next });
+  const updateProviderConfig = (next: Record<string, unknown>) => {
+    const base = eff(
+      "adapterConfig",
+      "providerConfig",
+      (config.providerConfig ?? {}) as Record<string, unknown>,
+    ) as Record<string, unknown>;
+    mark("adapterConfig", "providerConfig", { ...base, ...next });
+  };
 
   function updateEnvBinding(key: string, binding: EnvBinding | undefined) {
     const nextEnv = { ...envConfig };
@@ -109,39 +133,70 @@ export function SandboxConfigFields({
       set!({ envBindings: nextEnv });
       return;
     }
-    mark("adapterConfig", "env", Object.keys(nextEnv).length > 0 ? nextEnv : undefined);
+    mark("adapterConfig", "env", nextEnv);
+  }
+
+  function clearProviderCredentials(nextProviderType: string) {
+    const keepKey =
+      nextProviderType === "e2b"
+        ? "E2B_API_KEY"
+        : nextProviderType === "opensandbox"
+          ? "OPEN_SANDBOX_API_KEY"
+          : "CLOUDFLARE_GATEWAY_TOKEN";
+    for (const key of sandboxCredentialKeys) {
+      if (key !== keepKey) updateEnvBinding(key, undefined);
+    }
+    setDrafts({
+      e2b: keepKey === "E2B_API_KEY" ? drafts.e2b : "",
+      opensandbox: keepKey === "OPEN_SANDBOX_API_KEY" ? drafts.opensandbox : "",
+      cloudflare: keepKey === "CLOUDFLARE_GATEWAY_TOKEN" ? drafts.cloudflare : "",
+    });
   }
 
   function applyProviderPreset(nextProviderType: string) {
+    clearProviderCredentials(nextProviderType);
     if (isCreate) {
-      const patch: Record<string, unknown> = {
+      const patch: Partial<CreateConfigValues> = {
         sandboxProviderType: nextProviderType,
+        sandboxBaseUrl: "",
+        sandboxNamespace: "paperclip",
+        sandboxInstanceType: "standard",
+        sandboxImage: "",
+        sandboxTemplate: "",
+        sandboxDomain: "",
       };
       if (nextProviderType === "e2b") {
         patch.sandboxTemplate = recommendedE2BTemplate(sandboxAgentType);
-      } else if (nextProviderType === "opensandbox" && !values!.sandboxImage) {
+      } else if (nextProviderType === "opensandbox") {
         patch.sandboxImage = recommendedOpenSandboxImage();
       } else if (nextProviderType === "cloudflare") {
-        patch.sandboxNamespace = values!.sandboxNamespace || "paperclip";
-        patch.sandboxInstanceType = values!.sandboxInstanceType || "standard";
-        patch.sandboxImage = values!.sandboxImage || recommendedCloudflareImage(sandboxAgentType);
+        patch.sandboxImage = recommendedCloudflareImage(sandboxAgentType);
       }
       set!(patch);
       return;
     }
 
     mark("adapterConfig", "providerType", nextProviderType);
-    if (nextProviderType === "e2b" && !String(providerConfig.template ?? "")) {
-      updateProviderConfig({ template: recommendedE2BTemplate(sandboxAgentType) });
-    } else if (nextProviderType === "opensandbox" && !String(providerConfig.image ?? "")) {
-      updateProviderConfig({ image: recommendedOpenSandboxImage() });
-    } else if (nextProviderType === "cloudflare") {
-      updateProviderConfig({
-        namespace: String(providerConfig.namespace ?? "") || "paperclip",
-        instanceType: String(providerConfig.instanceType ?? "") || "standard",
-        image: String(providerConfig.image ?? "") || recommendedCloudflareImage(sandboxAgentType) || undefined,
+    if (nextProviderType === "e2b") {
+      mark("adapterConfig", "providerConfig", {
+        template: recommendedE2BTemplate(sandboxAgentType),
+        domain: undefined,
       });
+      return;
     }
+    if (nextProviderType === "opensandbox") {
+      mark("adapterConfig", "providerConfig", {
+        domain: undefined,
+        image: recommendedOpenSandboxImage(),
+      });
+      return;
+    }
+    mark("adapterConfig", "providerConfig", {
+      baseUrl: undefined,
+      namespace: "paperclip",
+      instanceType: "standard",
+      image: recommendedCloudflareImage(sandboxAgentType) || undefined,
+    });
   }
 
   async function saveCredentialSecret(
@@ -166,6 +221,12 @@ export function SandboxConfigFields({
         secretId: created.id,
         version: "latest",
       });
+      setDrafts((current) => ({
+        ...current,
+        e2b: envKey === "E2B_API_KEY" ? "" : current.e2b,
+        opensandbox: envKey === "OPEN_SANDBOX_API_KEY" ? "" : current.opensandbox,
+        cloudflare: envKey === "CLOUDFLARE_GATEWAY_TOKEN" ? "" : current.cloudflare,
+      }));
     } catch (error) {
       setSecretError(error instanceof Error ? error.message : "Failed to create secret");
     }
@@ -199,9 +260,9 @@ export function SandboxConfigFields({
           onChange={(event) => {
             const nextRuntime = event.target.value;
             if (isCreate) {
-              const patch: Record<string, unknown> = { sandboxAgentType: nextRuntime };
+              const patch: Partial<CreateConfigValues> = { sandboxAgentType: nextRuntime };
               if (providerType === "e2b") patch.sandboxTemplate = recommendedE2BTemplate(nextRuntime);
-              if (providerType === "cloudflare" && !values!.sandboxImage) {
+              if (providerType === "cloudflare" && !createValues.sandboxImage) {
                 patch.sandboxImage = recommendedCloudflareImage(nextRuntime);
               }
               set!(patch);
@@ -268,7 +329,7 @@ export function SandboxConfigFields({
             <DraftInput
               value={
                 isCreate
-                  ? values!.sandboxTemplate
+                  ? createValues.sandboxTemplate ?? ""
                   : String(providerConfig.template ?? providerConfig.image ?? "")
               }
               onCommit={(value) =>
@@ -343,7 +404,7 @@ export function SandboxConfigFields({
         hint={help.sandboxKeepAlive}
         checked={
           isCreate
-            ? values!.sandboxKeepAlive
+            ? createValues.sandboxKeepAlive ?? true
             : eff("adapterConfig", "keepAlive", config.keepAlive === true)
         }
         onChange={(value) =>
@@ -371,7 +432,7 @@ export function SandboxConfigFields({
                   <DraftInput
                     value={
                       isCreate
-                        ? values!.sandboxBaseUrl
+                        ? createValues.sandboxBaseUrl ?? ""
                         : String(providerConfig.baseUrl ?? "")
                     }
                     onCommit={(value) =>
@@ -389,7 +450,7 @@ export function SandboxConfigFields({
                   <DraftInput
                     value={
                       isCreate
-                        ? values!.sandboxNamespace
+                        ? createValues.sandboxNamespace ?? "paperclip"
                         : String(providerConfig.namespace ?? "paperclip")
                     }
                     onCommit={(value) =>
@@ -408,7 +469,7 @@ export function SandboxConfigFields({
                     className={inputClass}
                     value={
                       isCreate
-                        ? values!.sandboxInstanceType
+                        ? createValues.sandboxInstanceType ?? "standard"
                         : String(providerConfig.instanceType ?? "standard")
                     }
                     onChange={(event) =>
@@ -429,7 +490,7 @@ export function SandboxConfigFields({
                   <DraftInput
                     value={
                       isCreate
-                        ? values!.sandboxImage
+                        ? createValues.sandboxImage ?? ""
                         : String(providerConfig.image ?? "")
                     }
                     onCommit={(value) =>
@@ -450,7 +511,7 @@ export function SandboxConfigFields({
                 <DraftInput
                   value={
                     isCreate
-                      ? values!.sandboxDomain
+                      ? createValues.sandboxDomain ?? ""
                       : String(providerConfig.domain ?? "")
                   }
                   onCommit={(value) =>
@@ -471,7 +532,7 @@ export function SandboxConfigFields({
                   <DraftInput
                     value={
                       isCreate
-                        ? values!.sandboxDomain
+                        ? createValues.sandboxDomain ?? ""
                         : String(providerConfig.domain ?? "")
                     }
                     onCommit={(value) =>
@@ -489,7 +550,7 @@ export function SandboxConfigFields({
                   <DraftInput
                     value={
                       isCreate
-                        ? values!.sandboxImage
+                        ? createValues.sandboxImage ?? ""
                         : String(providerConfig.image ?? "")
                     }
                     onCommit={(value) =>
@@ -509,7 +570,7 @@ export function SandboxConfigFields({
               <DraftInput
                 value={
                   isCreate
-                    ? values!.sandboxBootstrapCommand
+                    ? createValues.sandboxBootstrapCommand ?? ""
                     : eff("adapterConfig", "bootstrapCommand", String(config.bootstrapCommand ?? ""))
                 }
                 onCommit={(value) =>
@@ -528,7 +589,7 @@ export function SandboxConfigFields({
                 <DraftInput
                   value={
                     isCreate
-                      ? values!.instructionsFilePath ?? ""
+                      ? createValues.instructionsFilePath ?? ""
                       : eff("adapterConfig", "instructionsFilePath", String(config.instructionsFilePath ?? ""))
                   }
                   onCommit={(value) =>

@@ -83,4 +83,49 @@ describe("buildSandboxConfig", () => {
       image: "ghcr.io/paperclipai/agent-sandbox:latest",
     });
   });
+
+  it("defaults missing provider type to e2b and omits empty provider fields", () => {
+    const config = buildSandboxConfig({
+      ...baseValues,
+      sandboxProviderType: "",
+      sandboxTemplate: "",
+      sandboxDomain: "",
+      sandboxBaseUrl: "",
+      sandboxImage: "",
+    });
+
+    expect(config.providerType).toBe("e2b");
+    expect(config.providerConfig).toEqual({
+      template: undefined,
+      domain: undefined,
+    });
+  });
+
+  it("propagates keepAlive and runtime-specific codex config", () => {
+    const config = buildSandboxConfig({
+      ...baseValues,
+      sandboxProviderType: "e2b",
+      sandboxAgentType: "codex_local",
+      sandboxKeepAlive: false,
+      sandboxTemplate: "codex",
+      thinkingEffort: "high",
+      search: true,
+      dangerouslyBypassSandbox: true,
+    });
+
+    expect(config.sandboxAgentType).toBe("codex_local");
+    expect(config.keepAlive).toBe(false);
+    expect(config.modelReasoningEffort).toBe("high");
+    expect(config.search).toBe(true);
+    expect(config.dangerouslyBypassApprovalsAndSandbox).toBe(true);
+  });
+
+  it("throws on an unsupported provider type", () => {
+    expect(() =>
+      buildSandboxConfig({
+        ...baseValues,
+        sandboxProviderType: "nope",
+      }),
+    ).toThrow(/Invalid sandbox provider type/);
+  });
 });

@@ -1,6 +1,8 @@
 import { models as claudeModels } from "@paperclipai/adapter-claude-local";
 import { models as codexModels } from "@paperclipai/adapter-codex-local";
 import { models as cursorModels } from "@paperclipai/adapter-cursor-local";
+import { models as openCodeModels } from "@paperclipai/adapter-opencode-local";
+import { models as piModels } from "@paperclipai/adapter-pi-local";
 
 export const type = "sandbox";
 export const label = "Sandboxed Agent";
@@ -9,6 +11,8 @@ export const models = [
   ...claudeModels.map((model) => ({ ...model, label: `Claude: ${model.label}` })),
   ...codexModels.map((model) => ({ ...model, label: `Codex: ${model.label}` })),
   ...cursorModels.map((model) => ({ ...model, label: `Cursor: ${model.label}` })),
+  ...openCodeModels.map((model) => ({ ...model, label: `OpenCode: ${model.label}` })),
+  ...piModels.map((model) => ({ ...model, label: `PI: ${model.label}` })),
 ];
 
 export const agentConfigurationDoc = `# sandbox agent configuration
@@ -30,7 +34,7 @@ Inner agent fields mirror the matching local adapter where practical:
 - cwd
 - instructionsFilePath
 - promptTemplate
-- bootstrapPromptTemplate
+- bootstrapPrompt
 - command
 - model
 - effort | modelReasoningEffort | variant | mode

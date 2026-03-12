@@ -35,7 +35,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "pnpm run clean && tsc",
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit"
   },

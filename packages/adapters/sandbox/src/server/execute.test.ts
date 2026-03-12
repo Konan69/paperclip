@@ -98,7 +98,8 @@ describe("sandbox adapter execute", () => {
     });
 
     expect(execCalls).toHaveLength(2);
-    expect(execCalls[0]?.command).toBe('sh -lc \'mkdir -p \'"\'"\'/workspace\'"\'"\'\'');
+    expect(execCalls[0]?.command).toContain("mkdir -p");
+    expect(execCalls[0]?.command).toContain("/workspace");
     expect(execCalls[1]?.stdin).toContain("Do the thing");
     expect(result.summary).toBe("sandbox hello");
     expect(result.usage).toEqual({
@@ -286,7 +287,7 @@ describe("sandbox adapter execute", () => {
           id: opts.sandboxId,
           async exec(command, execOpts = {}) {
             execCalls.push(command);
-            if (execCalls.length === 3) {
+            if (typeof execOpts.stdin === "string" && execOpts.stdin.includes("Do the thing")) {
               await execOpts.onStdout?.(`${JSON.stringify({ type: "thread.started", thread_id: "thread-sha" })}\n`);
               await execOpts.onStdout?.(
                 `${JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: "sha checkout" } })}\n`,

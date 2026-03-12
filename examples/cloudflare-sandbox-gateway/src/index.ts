@@ -9,6 +9,20 @@ type Env = {
   GATEWAY_TOKEN?: string;
 };
 
+function constantTimeEqual(a: string, b: string) {
+  const encoder = new TextEncoder();
+  const aBytes = encoder.encode(a);
+  const bBytes = encoder.encode(b);
+  const maxLength = Math.max(aBytes.length, bBytes.length);
+  let diff = aBytes.length ^ bBytes.length;
+
+  for (let index = 0; index < maxLength; index += 1) {
+    diff |= (aBytes[index] ?? 0) ^ (bBytes[index] ?? 0);
+  }
+
+  return diff === 0;
+}
+
 function json(data: unknown, init: ResponseInit = {}) {
   return new Response(JSON.stringify(data), {
     ...init,
@@ -32,7 +46,9 @@ function readBearer(request: Request) {
 function requireAuth(request: Request, env: Env) {
   const required = (env.GATEWAY_TOKEN ?? "").trim();
   if (!required) return true;
-  return readBearer(request) === required;
+  const provided = readBearer(request);
+  if (!provided) return false;
+  return constantTimeEqual(provided, required);
 }
 
 function sandboxName(namespace: string, sandboxId: string) {
@@ -47,6 +63,15 @@ async function readBody(request: Request) {
   return (await request.json()) as Record<string, unknown>;
 }
 
+function readStringRecord(value: unknown) {
+  if (typeof value !== "object" || value === null) return {};
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).flatMap(([key, entry]) =>
+      typeof entry === "string" ? [[key, entry]] : []
+    ),
+  ) as Record<string, string>;
+}
+
 async function streamExec(
   sandbox: ReturnType<typeof getSandbox>,
   payload: Record<string, unknown>,
@@ -56,46 +81,63 @@ async function streamExec(
   const encoder = new TextEncoder();
   const command = String(payload.command ?? "").trim();
   const cwd = typeof payload.cwd === "string" ? payload.cwd : undefined;
-  const env = typeof payload.env === "object" && payload.env !== null ? payload.env as Record<string, string> : {};
+  const env = readStringRecord(payload.env);
 
   const writeEvent = async (event: Record<string, unknown>) => {
     await writer.write(encoder.encode(`${JSON.stringify(event)}\n`));
   };
 
-  queueMicrotask(async () => {
-    try {
-      const result = await sandbox.exec(command, {
-        cwd,
-        env,
-        stream: true,
-        onOutput: async (streamName: string, data: string) => {
-          await writeEvent({
-            type: streamName === "stderr" ? "stderr" : "stdout",
-            chunk: data,
-          });
-        },
-      });
+  queueMicrotask(() => {
+    void (async () => {
+      try {
+        const result = await sandbox.exec(command, {
+          cwd,
+          env,
+          stream: true,
+          onOutput: async (streamName: string, data: string) => {
+            await writeEvent({
+              type: streamName === "stderr" ? "stderr" : "stdout",
+              chunk: data,
+            });
+          },
+        });
 
-      await writeEvent({
-        type: "exit",
-        exitCode: result.exitCode ?? null,
-        signal: null,
-        timedOut: false,
-      });
-    } catch (error) {
-      await writeEvent({
-        type: "stderr",
-        chunk: `${error instanceof Error ? error.message : String(error)}\n`,
-      });
-      await writeEvent({
-        type: "exit",
-        exitCode: 1,
-        signal: null,
-        timedOut: false,
-      });
-    } finally {
-      await writer.close();
-    }
+        await writeEvent({
+          type: "exit",
+          exitCode: result.exitCode ?? null,
+          signal: null,
+          timedOut: false,
+        });
+      } catch (error) {
+        await writeEvent({
+          type: "stderr",
+          chunk: `${error instanceof Error ? error.message : String(error)}\n`,
+        });
+        await writeEvent({
+          type: "exit",
+          exitCode: 1,
+          signal: null,
+          timedOut: false,
+        });
+      } finally {
+        await writer.close().catch(() => undefined);
+      }
+    })().catch(async (error) => {
+      try {
+        await writeEvent({
+          type: "stderr",
+          chunk: `${error instanceof Error ? error.message : String(error)}\n`,
+        });
+        await writeEvent({
+          type: "exit",
+          exitCode: 1,
+          signal: null,
+          timedOut: false,
+        });
+      } finally {
+        await writer.close().catch(() => undefined);
+      }
+    });
   });
 
   return new Response(stream.readable, {
@@ -106,7 +148,9 @@ async function streamExec(
   });
 }
 
+/** Durable Object binding class for generic sandbox instances. */
 export class Sandbox extends CloudflareSandbox {}
+/** Durable Object binding class used by the Paperclip gateway namespace. */
 export class PaperclipSandbox extends CloudflareSandbox {}
 
 export default {
@@ -132,14 +176,7 @@ export default {
       }
       const namespace = String(payload.namespace ?? "paperclip").trim() || "paperclip";
       const sandbox = readSandbox(env, namespace, sandboxId);
-      const sandboxEnv =
-        typeof payload.env === "object" && payload.env !== null
-          ? Object.fromEntries(
-              Object.entries(payload.env as Record<string, unknown>).filter(
-                (entry): entry is [string, string] => typeof entry[1] === "string",
-              ),
-            )
-          : {};
+      const sandboxEnv = readStringRecord(payload.env);
       if (Object.keys(sandboxEnv).length > 0) {
         await sandbox.setEnvVars(sandboxEnv);
       }

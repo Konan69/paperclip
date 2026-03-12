@@ -31,7 +31,7 @@ Inner CLI fields follow the same general shape as the local adapters:
 - `cwd`
 - `instructionsFilePath`
 - `promptTemplate`
-- `bootstrapPromptTemplate`
+- `bootstrapPrompt`
 - `bootstrapCommand`
 - `command`
 - `model`
@@ -40,7 +40,11 @@ Inner CLI fields follow the same general shape as the local adapters:
 
 Provider auth:
 - set `env.CLOUDFLARE_GATEWAY_TOKEN` to the same bearer token configured on the gateway
-- set `env.E2B_API_KEY` or `env.E2B_ACCESS_TOKEN` for E2B
+- for E2B, prefer `env.E2B_API_KEY`; `env.E2B_ACCESS_TOKEN` is also supported as a fallback/alternate auth path
+  - the adapter reads `providerConfig.apiKey`, `providerConfig.token`, and `env.E2B_API_KEY` for API-key auth
+  - it separately reads `providerConfig.accessToken` and `env.E2B_ACCESS_TOKEN` for access-token auth
+  - if both are present, both are forwarded to the SDK connection config
+  - example: `env: { "E2B_API_KEY": { "type": "secret_ref", "secretId": "..." } }`
 - set `env.OPEN_SANDBOX_API_KEY` for OpenSandbox
 
 ## Session behavior

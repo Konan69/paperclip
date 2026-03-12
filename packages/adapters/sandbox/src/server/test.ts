@@ -10,7 +10,7 @@ import {
   readSandboxProviderType,
 } from "./provider.js";
 
-function buildChecks(config: Record<string, unknown>): AdapterEnvironmentCheck[] {
+export function buildChecks(config: Record<string, unknown>): AdapterEnvironmentCheck[] {
   const checks: AdapterEnvironmentCheck[] = [];
   const providerConfig = parseObject(config.providerConfig);
   const env = parseObject(config.env);

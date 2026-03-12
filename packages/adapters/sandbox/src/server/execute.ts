@@ -130,7 +130,10 @@ function buildPrompt(ctx: AdapterExecutionContext, config: Record<string, unknow
     config.promptTemplate,
     "You are agent {{agent.id}} ({{agent.name}}). Continue your Paperclip work.",
   );
-  const bootstrapPrompt = asString(config.bootstrapPromptTemplate, "").trim();
+  const bootstrapPrompt = asString(
+    config.bootstrapPrompt,
+    asString(config.bootstrapPromptTemplate, ""),
+  ).trim();
   const renderedPrompt = renderTemplate(promptTemplate, {
     agentId: ctx.agent.id,
     companyId: ctx.agent.companyId,
@@ -348,6 +351,7 @@ async function syncRepoIfNeeded(
       "stderr",
       `[paperclip] Warning: failed to clone workspace repo into sandbox: ${err instanceof Error ? err.message : String(err)}\n`,
     );
+    throw err;
   }
 }
 
@@ -482,15 +486,17 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   const cwd = asString(config.cwd, defaultCwdForProvider(config)).trim() || defaultCwdForProvider(config);
   const env = buildRuntimeEnv(ctx, cwd);
   const isNewSandbox = !(keepAlive && savedSandboxId);
+  const timeoutSec = asNumber(config.timeoutSec, 0);
+  const sandboxId = isNewSandbox ? randomUUID() : savedSandboxId!;
 
-  let instance = keepAlive && savedSandboxId
+  const instance = keepAlive && savedSandboxId
     ? await provider.reconnect(savedSandboxId)
     : await provider.create({
-        sandboxId: savedSandboxId ?? randomUUID(),
+        sandboxId,
         env,
         image: asString(parseObject(config.providerConfig).image, "").trim() || undefined,
         instanceType: asString(parseObject(config.providerConfig).instanceType, "").trim() || undefined,
-        timeoutSec: asNumber(config.timeoutSec, 0),
+        timeoutSec,
         metadata: {
           agentId: ctx.agent.id,
           companyId: ctx.agent.companyId,
@@ -498,79 +504,81 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
         },
       });
 
-  await ensureWorkspaceDir(instance, cwd);
-  await syncRepoIfNeeded(instance, ctx, cwd);
-  if (isNewSandbox) {
-    await runBootstrapCommandIfNeeded({
-      ctx,
-      instance,
-      config,
-      cwd,
-      env,
-    });
-  }
+  try {
+    await ensureWorkspaceDir(instance, cwd);
+    await syncRepoIfNeeded(instance, ctx, cwd);
+    if (isNewSandbox) {
+      await runBootstrapCommandIfNeeded({
+        ctx,
+        instance,
+        config,
+        cwd,
+        env,
+      });
+    }
 
-  let attempt = await runInnerAgent({
-    ctx,
-    instance,
-    agentType,
-    config,
-    cwd,
-    env,
-    cliSessionId,
-  });
-
-  if (cliSessionId && isUnknownSession(agentType, attempt.stdout, attempt.stderr)) {
-    await ctx.onLog(
-      "stderr",
-      `[paperclip] Saved ${agentType} session "${cliSessionId}" is unavailable; retrying with a fresh session.\n`,
-    );
-    attempt = await runInnerAgent({
+    let attempt = await runInnerAgent({
       ctx,
       instance,
       agentType,
       config,
       cwd,
       env,
-      cliSessionId: null,
+      cliSessionId,
     });
+
+    if (cliSessionId && isUnknownSession(agentType, attempt.stdout, attempt.stderr)) {
+      await ctx.onLog(
+        "stderr",
+        `[paperclip] Saved ${agentType} session "${cliSessionId}" is unavailable; retrying with a fresh session.\n`,
+      );
+      attempt = await runInnerAgent({
+        ctx,
+        instance,
+        agentType,
+        config,
+        cwd,
+        env,
+        cliSessionId: null,
+      });
+    }
+
+    const nextSessionParams =
+      keepAlive
+        ? {
+            sandboxId: instance.id,
+            agentType,
+            ...(attempt.parsed.sessionId ? { cliSession: { sessionId: attempt.parsed.sessionId } } : {}),
+          }
+        : null;
+
+    return {
+      exitCode: attempt.execResult.exitCode,
+      signal: attempt.execResult.signal,
+      timedOut: attempt.execResult.timedOut,
+      errorMessage:
+        attempt.execResult.timedOut && timeoutSec > 0
+          ? `Timed out after ${timeoutSec}s`
+          : attempt.parsed.errorMessage,
+      usage: attempt.parsed.usage,
+      provider: asString(config.providerType, "cloudflare") || "cloudflare",
+      model: asString(config.model, "").trim() || null,
+      billingType: billingTypeFor(agentType, env),
+      costUsd: attempt.parsed.costUsd ?? null,
+      resultJson: {
+        sandboxId: instance.id,
+        sandboxAgentType: agentType,
+      },
+      summary: attempt.parsed.summary,
+      sessionParams: nextSessionParams,
+      sessionDisplayId:
+        asString(parseObject(nextSessionParams?.cliSession).sessionId, "").trim() ||
+        instance.id,
+      clearSession: !keepAlive,
+    };
+  } finally {
+    if (!keepAlive) {
+      await instance.destroy().catch(() => undefined);
+    }
   }
-
-  if (!keepAlive) {
-    await instance.destroy().catch(() => undefined);
-  }
-
-  const nextSessionParams =
-    keepAlive
-      ? {
-          sandboxId: instance.id,
-          agentType,
-          ...(attempt.parsed.sessionId ? { cliSession: { sessionId: attempt.parsed.sessionId } } : {}),
-        }
-      : null;
-
-  return {
-    exitCode: attempt.execResult.exitCode,
-    signal: attempt.execResult.signal,
-    timedOut: attempt.execResult.timedOut,
-    errorMessage:
-      attempt.execResult.timedOut
-        ? `Timed out after ${asNumber(config.timeoutSec, 0)}s`
-        : attempt.parsed.errorMessage,
-    usage: attempt.parsed.usage,
-    provider: asString(config.providerType, "cloudflare") || "cloudflare",
-    model: asString(config.model, "").trim() || null,
-    billingType: billingTypeFor(agentType, env),
-    costUsd: attempt.parsed.costUsd ?? null,
-    resultJson: {
-      sandboxId: instance.id,
-      sandboxAgentType: agentType,
-    },
-    summary: attempt.parsed.summary,
-    sessionParams: nextSessionParams,
-    sessionDisplayId:
-      asString(parseObject(nextSessionParams?.cliSession).sessionId, "").trim() ||
-      instance.id,
-    clearSession: !keepAlive,
-  };
 }
