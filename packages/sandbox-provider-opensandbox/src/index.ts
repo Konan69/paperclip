@@ -112,10 +112,18 @@ class OpenSandboxInstance implements SandboxInstance {
         },
         {
           onStdout: async (msg) => {
-            await opts.onStdout?.(msg.text);
+            try {
+              await opts.onStdout?.(msg.text);
+            } catch (err) {
+              console.error("Error in onStdout callback:", err);
+            }
           },
           onStderr: async (msg) => {
-            await opts.onStderr?.(msg.text);
+            try {
+              await opts.onStderr?.(msg.text);
+            } catch (err) {
+              console.error("Error in onStderr callback:", err);
+            }
           },
         },
       );

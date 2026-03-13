@@ -564,8 +564,10 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       signal: attempt.execResult.signal,
       timedOut: attempt.execResult.timedOut,
       errorMessage:
-        attempt.execResult.timedOut && timeoutSec > 0
-          ? `Timed out after ${timeoutSec}s`
+        attempt.execResult.timedOut
+          ? timeoutSec > 0
+            ? `Timed out after ${timeoutSec}s`
+            : "Timed out"
           : attempt.parsed.errorMessage,
       usage: attempt.parsed.usage,
       provider: asString(config.providerType, "cloudflare") || "cloudflare",
