@@ -8,7 +8,6 @@ import {
   DraftInput,
   help,
 } from "../../components/agent-config-primitives";
-import { ChoosePathButton } from "../../components/PathInstructionsModal";
 
 const inputClass =
   "w-full rounded-md border border-border px-2.5 py-1.5 bg-transparent outline-none text-sm font-mono placeholder:text-muted-foreground/40";
@@ -28,11 +27,22 @@ const sandboxProviderOptions = [
 ] as const;
 
 const instanceTypeOptions = ["lite", "standard", "heavy"] as const;
+const codexThinkingEffortOptions = ["", "minimal", "low", "medium", "high"] as const;
+const openCodeThinkingEffortOptions = ["", "minimal", "low", "medium", "high", "max"] as const;
+const cursorModeOptions = ["", "plan", "ask"] as const;
+const claudeThinkingEffortOptions = ["", "low", "medium", "high"] as const;
 const sandboxCredentialKeys = [
   "E2B_API_KEY",
   "OPEN_SANDBOX_API_KEY",
   "CLOUDFLARE_GATEWAY_TOKEN",
 ] as const;
+const sandboxRuntimeLabelPrefix: Record<string, string> = {
+  claude_local: "Claude:",
+  codex_local: "Codex:",
+  cursor: "Cursor:",
+  opencode_local: "OpenCode:",
+  pi_local: "PI:",
+};
 
 function recommendedE2BTemplate(agentType: string) {
   if (agentType === "codex_local") return "codex";
@@ -49,6 +59,23 @@ function recommendedCloudflareImage(agentType: string) {
 
 function recommendedOpenSandboxImage() {
   return "ghcr.io/paperclipai/agent-sandbox:latest";
+}
+
+function sandboxDefaultCwd(providerType: string) {
+  return providerType === "e2b" ? "/home/user/workspace" : "/workspace";
+}
+
+function sandboxCwdPlaceholder(providerType: string) {
+  return `${sandboxDefaultCwd(providerType)}/project`;
+}
+
+function filterModelsForRuntime(
+  models: { id: string; label: string }[],
+  sandboxAgentType: string,
+) {
+  const prefix = sandboxRuntimeLabelPrefix[sandboxAgentType] ?? "";
+  if (!prefix) return [];
+  return models.filter((model) => model.label.startsWith(prefix));
 }
 
 function readPlainValue(binding: unknown): string {
@@ -74,6 +101,7 @@ export function SandboxConfigFields({
   config,
   eff,
   mark,
+  models,
   secrets = [],
   onCreateSecret,
 }: AdapterConfigFieldsProps) {
@@ -101,6 +129,31 @@ export function SandboxConfigFields({
       ? (createValues.envBindings ?? {})
       : eff("adapterConfig", "env", ((config.env ?? {}) as Record<string, EnvBinding>) ?? {})
   ) as Record<string, EnvBinding>;
+  const runtimeModels = useMemo(
+    () => filterModelsForRuntime(models, sandboxAgentType),
+    [models, sandboxAgentType],
+  );
+  const modelValue = isCreate
+    ? createValues.model ?? ""
+    : eff("adapterConfig", "model", String(config.model ?? ""));
+  const cwdValue = isCreate
+    ? createValues.cwd ?? ""
+    : eff("adapterConfig", "cwd", String(config.cwd ?? ""));
+  const commandValue = isCreate
+    ? createValues.command ?? ""
+    : eff("adapterConfig", "command", String(config.command ?? ""));
+  const extraArgsValue = isCreate
+    ? createValues.extraArgs ?? ""
+    : eff("adapterConfig", "extraArgs", Array.isArray(config.extraArgs) ? config.extraArgs.join(", ") : String(config.extraArgs ?? ""));
+  const thinkingValue = isCreate
+    ? createValues.thinkingEffort ?? ""
+    : sandboxAgentType === "codex_local"
+      ? eff("adapterConfig", "modelReasoningEffort", String(config.modelReasoningEffort ?? ""))
+      : sandboxAgentType === "cursor"
+        ? eff("adapterConfig", "mode", String(config.mode ?? ""))
+        : sandboxAgentType === "opencode_local"
+          ? eff("adapterConfig", "variant", String(config.variant ?? ""))
+          : eff("adapterConfig", "effort", String(config.effort ?? ""));
 
   const [advancedOpen, setAdvancedOpen] = useState(!isCreate);
   const [secretError, setSecretError] = useState<string | null>(null);
@@ -251,8 +304,47 @@ export function SandboxConfigFields({
     return fallback;
   }
 
+  function setThinkingValue(value: string) {
+    if (isCreate) {
+      set!({ thinkingEffort: value });
+      return;
+    }
+    if (sandboxAgentType === "codex_local") {
+      mark("adapterConfig", "modelReasoningEffort", value || undefined);
+      return;
+    }
+    if (sandboxAgentType === "cursor") {
+      mark("adapterConfig", "mode", value || undefined);
+      return;
+    }
+    if (sandboxAgentType === "opencode_local") {
+      mark("adapterConfig", "variant", value || undefined);
+      return;
+    }
+    mark("adapterConfig", "effort", value || undefined);
+  }
+
+  const thinkingOptions =
+    sandboxAgentType === "codex_local"
+      ? codexThinkingEffortOptions
+      : sandboxAgentType === "cursor"
+        ? cursorModeOptions
+        : sandboxAgentType === "opencode_local"
+          ? openCodeThinkingEffortOptions
+          : claudeThinkingEffortOptions;
+  const thinkingLabel =
+    sandboxAgentType === "cursor"
+      ? "Mode"
+      : sandboxAgentType === "opencode_local"
+        ? "Thinking effort / variant"
+        : "Thinking effort";
+
   return (
     <>
+      <div className="rounded-md border border-border px-3 py-2 text-xs text-muted-foreground">
+        Paperclip provisions the sandbox image/template, injects env from agent config and secrets, and clones the run workspace repo into the sandbox when a repo URL/ref is available.
+      </div>
+
       <Field label="Sandbox runtime" hint={help.sandboxAgentType}>
         <select
           className={inputClass}
@@ -413,6 +505,172 @@ export function SandboxConfigFields({
             : mark("adapterConfig", "keepAlive", value)
         }
       />
+
+      <Field label="Sandbox working directory" hint="Path inside the sandbox where Paperclip will run the inner CLI. If the run has a repo workspace, Paperclip clones it here before execution.">
+        <DraftInput
+          value={cwdValue}
+          onCommit={(value) =>
+            isCreate
+              ? set!({ cwd: value })
+              : mark("adapterConfig", "cwd", value || undefined)
+          }
+          immediate
+          className={inputClass}
+          placeholder={sandboxCwdPlaceholder(providerType)}
+        />
+      </Field>
+
+      <Field label="Sandbox command" hint="CLI command or absolute path inside the sandbox image/template.">
+        <DraftInput
+          value={commandValue}
+          onCommit={(value) =>
+            isCreate
+              ? set!({ command: value })
+              : mark("adapterConfig", "command", value || undefined)
+          }
+          immediate
+          className={inputClass}
+          placeholder={
+            sandboxAgentType === "codex_local"
+              ? "codex"
+              : sandboxAgentType === "cursor"
+                ? "agent"
+                : sandboxAgentType === "opencode_local"
+                  ? "opencode"
+                  : sandboxAgentType === "pi_local"
+                    ? "pi"
+                    : "claude"
+          }
+        />
+      </Field>
+
+      <Field label="Model" hint="Inner runtime model used inside the sandbox. This mirrors the local adapter model setting.">
+        <select
+          className={inputClass}
+          value={modelValue}
+          onChange={(event) =>
+            isCreate
+              ? set!({ model: event.target.value })
+              : mark("adapterConfig", "model", event.target.value || undefined)
+          }
+        >
+          <option value="">Default</option>
+          {runtimeModels.map((model) => (
+            <option key={model.id} value={model.id}>
+              {model.label.replace(/^[^:]+:\s*/, "")}
+            </option>
+          ))}
+        </select>
+      </Field>
+
+      {(sandboxAgentType === "claude_local" ||
+        sandboxAgentType === "codex_local" ||
+        sandboxAgentType === "cursor" ||
+        sandboxAgentType === "opencode_local") && (
+        <Field label={thinkingLabel} hint={help.thinkingEffort}>
+          <select
+            className={inputClass}
+            value={thinkingValue}
+            onChange={(event) => setThinkingValue(event.target.value)}
+          >
+            {thinkingOptions.map((option) => (
+              <option key={option || "auto"} value={option}>
+                {option || "Auto"}
+              </option>
+            ))}
+          </select>
+        </Field>
+      )}
+
+      {sandboxAgentType === "claude_local" && (
+        <>
+          <ToggleField
+            label="Enable Chrome"
+            hint={help.chrome}
+            checked={
+              isCreate
+                ? createValues.chrome ?? false
+                : eff("adapterConfig", "chrome", config.chrome === true)
+            }
+            onChange={(value) =>
+              isCreate
+                ? set!({ chrome: value })
+                : mark("adapterConfig", "chrome", value)
+            }
+          />
+          <ToggleField
+            label="Skip permissions"
+            hint={help.dangerouslySkipPermissions}
+            checked={
+              isCreate
+                ? createValues.dangerouslySkipPermissions ?? false
+                : eff("adapterConfig", "dangerouslySkipPermissions", config.dangerouslySkipPermissions === true)
+            }
+            onChange={(value) =>
+              isCreate
+                ? set!({ dangerouslySkipPermissions: value })
+                : mark("adapterConfig", "dangerouslySkipPermissions", value)
+            }
+          />
+        </>
+      )}
+
+      {sandboxAgentType === "codex_local" && (
+        <>
+          <ToggleField
+            label="Enable search"
+            hint={help.search}
+            checked={
+              isCreate
+                ? createValues.search ?? false
+                : eff("adapterConfig", "search", config.search === true)
+            }
+            onChange={(value) =>
+              isCreate
+                ? set!({ search: value })
+                : mark("adapterConfig", "search", value)
+            }
+          />
+          <ToggleField
+            label="Bypass approvals and sandbox"
+            hint={help.dangerouslyBypassSandbox}
+            checked={
+              isCreate
+                ? createValues.dangerouslyBypassSandbox ?? false
+                : eff(
+                    "adapterConfig",
+                    "dangerouslyBypassApprovalsAndSandbox",
+                    config.dangerouslyBypassApprovalsAndSandbox === true,
+                  )
+            }
+            onChange={(value) =>
+              isCreate
+                ? set!({ dangerouslyBypassSandbox: value })
+                : mark("adapterConfig", "dangerouslyBypassApprovalsAndSandbox", value)
+            }
+          />
+        </>
+      )}
+
+      <Field label="Extra args" hint={help.extraArgs}>
+        <DraftInput
+          value={extraArgsValue}
+          onCommit={(value) =>
+            isCreate
+              ? set!({ extraArgs: value })
+              : mark(
+                  "adapterConfig",
+                  "extraArgs",
+                  value
+                    ? value.split(",").map((entry) => entry.trim()).filter(Boolean)
+                    : undefined,
+                )
+          }
+          immediate
+          className={inputClass}
+          placeholder="--flag, --another=value"
+        />
+      </Field>
 
       <div className="rounded-md border border-border">
         <button
@@ -585,7 +843,7 @@ export function SandboxConfigFields({
             </Field>
 
             <Field label="Agent instructions file" hint={help.instructionsFilePath}>
-              <div className="flex items-center gap-2">
+              <div className="space-y-2">
                 <DraftInput
                   value={
                     isCreate
@@ -599,9 +857,11 @@ export function SandboxConfigFields({
                   }
                   immediate
                   className={inputClass}
-                  placeholder="/absolute/path/to/AGENTS.md"
+                  placeholder={`${sandboxDefaultCwd(providerType)}/AGENTS.md`}
                 />
-                <ChoosePathButton />
+                <p className="text-xs text-muted-foreground">
+                  This path is resolved inside the sandbox, not on the Paperclip host.
+                </p>
               </div>
             </Field>
           </div>

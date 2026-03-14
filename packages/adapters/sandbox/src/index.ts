@@ -31,7 +31,7 @@ Core fields:
 - keepAlive (boolean, optional): keep sandbox/session alive across heartbeats
 
 Inner agent fields mirror the matching local adapter where practical:
-- cwd
+- cwd (path inside the sandbox; Paperclip clones the run workspace repo here when repoUrl/repoRef are available)
 - instructionsFilePath
 - promptTemplate
 - bootstrapPrompt
